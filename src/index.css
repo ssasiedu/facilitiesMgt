@@ -1,0 +1,35 @@
+@font-face { font-family: 'Inter'; font-style: normal; font-weight: 400; font-display: swap; src: url('/fonts/Inter-Regular.woff') format('woff'); }
+@font-face { font-family: 'Inter'; font-style: normal; font-weight: 500 600; font-display: swap; src: url('/fonts/Inter-SemiBold.woff') format('woff'); }
+@font-face { font-family: 'Inter'; font-style: normal; font-weight: 700; font-display: swap; src: url('/fonts/Inter-Bold.woff') format('woff'); }
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --brand-50: 230 244 243;
+  --brand-100: 200 230 228;
+  --brand-500: 39 133 125;
+  --brand-600: 15 118 110;
+  --brand-700: 12 97 90;
+}
+
+@layer base {
+  html { -webkit-tap-highlight-color: transparent; }
+  body { font-feature-settings: 'cv11', 'tnum' 0; }
+  :focus-visible { outline: 2px solid rgb(var(--brand-500)); outline-offset: 2px; }
+  input[type='date'] { min-height: 2.5rem; }
+}
+
+@layer utilities {
+  .tabular-nums { font-variant-numeric: tabular-nums; }
+}
+
+@media print {
+  aside, header, .no-print { display: none !important; }
+  main { max-width: none !important; padding: 0 !important; }
+  body { background: white; }
+}
+
+/* Leaflet (map of check-ins) */
+.leaflet-container { font-family: inherit; border-radius: 0.75rem; }
