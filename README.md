@@ -136,12 +136,15 @@ appears, enable them here and then run `select public.schedule_app_jobs();`.
 
 **4. Run the migrations.** Either way works, and both are tested.
 
-With the CLI:
+With the CLI. Note the `--remote` flag: from CLI v3 (November 2026) database commands run against
+your **local** stack unless you say otherwise, so a bare `db push` either fails with
+`connect ECONNREFUSED 127.0.0.1:54322` or, worse, quietly succeeds against a local stack and never
+touches your project. On CLI v2 use `--linked` instead, or just upgrade.
 
 ```bash
 supabase login
 supabase link --project-ref <your-project-ref>
-supabase db push          # applies supabase/migrations in file order
+supabase db push --remote   # applies supabase/migrations in file order
 ```
 
 Through the dashboard: open SQL Editor and paste the contents of each file in
@@ -629,7 +632,7 @@ The link only works once the invoice has left draft, and statement links expire 
 one from the customer's Statement tab.
 
 **The build fails with a type error after you change the database.**
-Regenerate the types: `supabase gen types typescript --linked > src/types/database.ts`.
+Regenerate the types: `supabase gen types typescript --remote > src/types/database.ts`.
 
 ---
 
@@ -679,7 +682,7 @@ _(screenshot)_
 
 - Supabase takes daily backups on paid plans. Check Database → Backups and know your retention.
 - Take your own copy before anything risky:
-  `supabase db dump --db-url "$DATABASE_URL" -f backup-$(date +%F).sql`
+  `supabase db dump --remote="$DATABASE_URL" -f backup-$(date +%F).sql`
 - Settings → Data export produces an Excel workbook of any group of tables, or a CSV of one table,
   straight from your account — useful for your accountant and as an off-site copy.
 - Uploaded files live in Storage and are **not** in a database dump. Download them separately
