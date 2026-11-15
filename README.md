@@ -202,11 +202,18 @@ them yourself. Every secret the functions can take is listed in `.env.example`.
 `send-notification` through `pg_net`, and they read the address and the secret from Vault so neither
 is ever written into a table:
 
+The two names below are read by `job_process_outbox()`, so they must be spelled exactly like this,
+and the URL must be the full address of the function, not the base path:
+
 ```sql
-select vault.create_secret('https://<your-project-ref>.supabase.co/functions/v1', 'fm_functions_url');
-select vault.create_secret('<the same CRON_SECRET you set above>', 'fm_cron_secret');
+select vault.create_secret(
+  'https://<your-project-ref>.supabase.co/functions/v1/send-notification', 'send_notification_url');
+select vault.create_secret('<the same CRON_SECRET you set above>', 'cron_secret');
 select public.schedule_app_jobs();
 ```
+
+To change either later, `vault.create_secret` will refuse a name that already exists — use
+`select vault.update_secret(id, '<new value>') from vault.secrets where name = 'cron_secret';`
 
 **11. Check the cron jobs.**
 
@@ -593,9 +600,18 @@ from cron.job_run_details order by start_time desc limit 20;
 ```
 
 If the list is empty, `pg_cron` is not enabled: enable it under Database → Extensions, then
-`select public.schedule_app_jobs();`. If jobs run but nothing is sent, the Vault secrets are
-missing or wrong — re-run the two `vault.create_secret` calls from step 10 and confirm `CRON_SECRET`
-matches the function secret exactly. Remember the times are UTC, which is Ghana time.
+`select public.schedule_app_jobs();`. If jobs run but nothing is sent, check the Vault entries
+first — they are the usual cause:
+
+```sql
+select name, created_at from vault.secrets order by name;
+```
+
+You need exactly `send_notification_url` and `cron_secret`. A different name, or a URL that stops
+at `/functions/v1` without `/send-notification` on the end, means `job_process_outbox()` returns
+quietly without calling anything: messages stay queued and nothing errors. The `cron_secret` value
+must also match the `CRON_SECRET` function secret character for character, or the function answers
+401. Remember the times are UTC, which is Ghana time.
 
 **SMS is not arriving.**
 Open Notifications and look at the failed message: the provider's own error is recorded against it.
