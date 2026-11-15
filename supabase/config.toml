@@ -32,7 +32,8 @@ jwt_expiry = 3600
 enable_signup = true
 
 [auth.email]
-enable_signup = true
+# `enable_signup` was renamed; `[auth] enable_signup` above still governs sign-ups.
+enabled = true
 enable_confirmations = true
 
 # Public endpoints check their own credentials (cron secret, webhook signature, document token)
