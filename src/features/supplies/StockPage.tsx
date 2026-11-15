@@ -62,7 +62,7 @@ export default function StockPage() {
         .select('id, movement_date, movement_type, quantity, unit_cost, note, cost_item:cost_items(name, unit_of_measure), location:stock_locations(name), contract:contracts(id, contract_no), job_order:job_orders(id, job_no)')
         .order('movement_date', { ascending: false }).limit(300);
       if (location) q = q.eq('location_id', location);
-      return check(await q) as MovementRow[];
+      return check(await q) as unknown as MovementRow[];
     },
   });
 

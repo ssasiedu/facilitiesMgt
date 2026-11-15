@@ -61,7 +61,7 @@ export default function DispatchCalendarPage() {
     queryFn: async () => check(await supabase.from('truck_bookings')
       .select('id, truck_id, job_order_id, period, job:job_orders(id, job_no, customer_name, status, execution_date, end_date, time_window)')
       .eq('active', true)
-      .overlaps('period', `[${fromIso},${toIso}]`)) as Booking[],
+      .overlaps('period', `[${fromIso},${toIso}]`)) as unknown as Booking[],
   });
   useRealtimeInvalidate(['job_orders'], [['dispatch', fromIso, toIso]]);
 

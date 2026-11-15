@@ -66,7 +66,7 @@ export default function BankAccountsPage() {
       .eq('account_id', reconcileAccount)
       .eq('entry.status', 'posted')
       .order('id', { ascending: false })
-      .limit(300)) as LedgerLine[],
+      .limit(300)) as unknown as LedgerLine[],
   });
 
   const doTransfer = useAction(() => rpc('record_bank_transfer', {

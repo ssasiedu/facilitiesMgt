@@ -75,7 +75,7 @@ export default function TruckDetailPage() {
     enabled: tab === 'jobs',
     queryFn: async () => check(await supabase.from('job_order_assignments')
       .select('job_order_id, job:job_orders(id, job_no, customer_name, execution_date, status, agreed_amount)')
-      .eq('truck_id', id).eq('kind', 'truck').order('created_at', { ascending: false }).limit(100)) as
+      .eq('truck_id', id).eq('kind', 'truck').order('created_at', { ascending: false }).limit(100)) as unknown as
       { job_order_id: string; job: { id: string; job_no: string | null; customer_name: string | null; execution_date: string; status: string; agreed_amount: number } | null }[],
   });
 

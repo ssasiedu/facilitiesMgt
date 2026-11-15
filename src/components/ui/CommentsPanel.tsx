@@ -18,7 +18,7 @@ export function CommentsPanel({ entityType, entityId }: { entityType: Entity; en
   const key = ['comments', entityType, entityId];
   const { data = [] } = useQuery({
     queryKey: key,
-    queryFn: async () => check(await supabase.from('comments').select('id, body, created_at, author:profiles(full_name)').eq('entity_type', entityType).eq('entity_id', entityId).order('created_at', { ascending: false })) as { id: string; body: string; created_at: string; author: { full_name: string } | null }[],
+    queryFn: async () => check(await supabase.from('comments').select('id, body, created_at, author:profiles(full_name)').eq('entity_type', entityType).eq('entity_id', entityId).order('created_at', { ascending: false })) as unknown as { id: string; body: string; created_at: string; author: { full_name: string } | null }[],
   });
   return (
     <div className="space-y-3">

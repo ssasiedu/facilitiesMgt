@@ -28,7 +28,14 @@ export function check<T>(res: { data: T; error: unknown }): T {
   return res.data;
 }
 
-export function useAction<TVars, TResult = unknown>(fn: (v: TVars) => Promise<TResult>, opts: { success?: string | ((r: TResult) => string); invalidate?: QueryKey[]; onSuccess?: (r: TResult) => void } = {}) {
+/**
+ * A mutation with a toast, query invalidation and error handling.
+ *
+ * TVars defaults to void so an action that takes no argument can be fired as `act.mutate()`.
+ * Without the default TypeScript has nothing to infer TVars from and falls back to unknown,
+ * which makes the variable mandatory at every call site.
+ */
+export function useAction<TVars = void, TResult = unknown>(fn: (v: TVars) => Promise<TResult>, opts: { success?: string | ((r: TResult) => string); invalidate?: QueryKey[]; onSuccess?: (r: TResult) => void } = {}) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: fn,
