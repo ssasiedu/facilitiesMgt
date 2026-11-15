@@ -864,9 +864,14 @@ anybody's execution dates.
 2. **Set your tax rates.** They ship inactive on purpose, so nothing is charged by guesswork. Open
    Settings → Taxes, enter the rates that apply to your business, set the order and which ones
    compound, and check the worked example against an invoice you have already issued by hand.
-3. **Upload your logo and set the brand colour** in Settings → Company, along with your TIN, GPS
+3. **Set the public app address** in Settings → Company, to the address customers will open, with
+   no trailing slash. Every invoice, receipt, survey and statement link is built from this field in
+   the database, and it ships set to `http://localhost:5173` for local work — until you change it,
+   customers receive links they cannot open. It is separate from the `PUBLIC_APP_URL` function
+   secret, which the invite and document functions use; set both to the same address.
+4. **Upload your logo and set the brand colour** in Settings → Company, along with your TIN, GPS
    address, phone numbers, bank and MoMo details and the payment line used in text messages. Issue
    one test invoice and read the PDF end to end before anyone sees a real one.
-4. **Create your users.** Invite each person in Settings → Users with their roles and, for zonal
+5. **Create your users.** Invite each person in Settings → Users with their roles and, for zonal
    officers, their zones. Ask everyone to sign in once and change their password, then turn off
    public sign-ups in Supabase. Delete the demo data block when your own data is in.
