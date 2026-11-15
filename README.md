@@ -117,8 +117,18 @@ document numbering, scheduled job times, the audit log, and data export.
 **1. Create the project.** In the Supabase dashboard choose New project, pick a strong database
 password and the region closest to Ghana (`eu-west-1` or `eu-central-1` are the usual choices).
 
-**2. Copy the URL and anon key.** Project Settings → API. You need `Project URL` and the
-`anon public` key. The `service_role` key is never used by the front end — keep it out of `.env`.
+**2. Copy the URL and the publishable key.** The quickest route is the project's **Connect** dialog,
+which shows both ready to paste; otherwise open **Settings → API Keys**. You need the project URL
+(`https://<project-ref>.supabase.co`) and, under the *Publishable and secret API keys* tab, the
+**publishable key** (`sb_publishable_…`). If that tab offers a *Create new API keys* button, your
+project is still on the older keys: either create them, or take the legacy `anon public` key from
+the *Legacy API Keys* tab — both work identically here, since each runs as the `anon` Postgres role
+and is governed by the same RLS policies. Supabase is retiring the legacy keys at the end of 2026,
+so prefer the publishable one for a new project.
+
+Whichever you copy goes into `VITE_SUPABASE_ANON_KEY`; the variable name is just what this codebase
+calls it. The **secret** key (`sb_secret_…`) and the legacy `service_role` key bypass RLS entirely
+and must never appear in `.env` or anywhere the browser can reach.
 
 **3. Enable pg_cron and pg_net.** Database → Extensions, search for each and enable it. Migration
 `0001` enables them too where it is allowed to, and prints a notice if it cannot; if the notice
@@ -327,8 +337,10 @@ supabase functions serve send-notification --env-file .env.functions
 
 1. Push the repository to GitHub, then Vercel → Add New → Project → import it.
 2. Framework preset: **Vite**. Build command `npm run build`, output directory `dist`.
-3. Settings → Environment Variables, for Production and Preview:
-   `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `VITE_APP_NAME`, `VITE_PUBLIC_APP_URL`.
+3. Settings → Environment Variables, for Production and Preview. Only two are required:
+   `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` (step 2 above says where to find them).
+   `VITE_APP_NAME` and `VITE_PUBLIC_APP_URL` are optional — left unset they fall back to
+   "FacilitiesManagement" and to whatever address the app is being served from.
 4. Deploy. `vercel.json` already rewrites every path to `index.html`, which a single-page app needs,
    and sets the security headers.
 
@@ -336,7 +348,7 @@ supabase functions serve send-notification --env-file .env.functions
 
 1. Netlify → Add new site → Import an existing project.
 2. Build command `npm run build`, publish directory `dist`.
-3. Site configuration → Environment variables: the same four `VITE_` values.
+3. Site configuration → Environment variables: the same `VITE_` values as above.
 4. Deploy. `netlify.toml` carries the SPA redirect and the same headers.
 
 ### A custom domain
@@ -594,7 +606,7 @@ so a number saved as `024...` is fine.
 **CORS errors in the browser console when calling a function.**
 Set `ALLOWED_ORIGIN` to your exact site address (`https://app.yourdomain.com`, no trailing slash) and
 redeploy the function. Each function answers the `OPTIONS` preflight itself; a 401 on the preflight
-means you are calling it without the anon key.
+means you are calling it without the publishable (or anon) key.
 
 **"Invoice not found" on a public link.**
 The link only works once the invoice has left draft, and statement links expire — generate a fresh
@@ -661,7 +673,7 @@ _(screenshot)_
 
 ### Security
 
-- The browser only ever holds the anon key, which is useless without a session and is governed by
+- The browser only ever holds the publishable (or legacy anon) key, which is useless without a session and is governed by
   RLS. The service-role key exists only inside Edge Function secrets.
 - SMS, email and payment keys are Edge Function secrets. The browser never calls a provider.
 - Every table in `public` has RLS enabled. Verify it yourself at any time:
@@ -842,5 +854,3 @@ anybody's execution dates.
 4. **Create your users.** Invite each person in Settings → Users with their roles and, for zonal
    officers, their zones. Ask everyone to sign in once and change their password, then turn off
    public sign-ups in Supabase. Delete the demo data block when your own data is in.
-#   f a c i l i t i e s M g t  
- 
