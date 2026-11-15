@@ -38,7 +38,7 @@ const FULL_SELECT = `
   approver:profiles!job_orders_approved_by_fkey(full_name),
   invoice:invoices!job_orders_invoice_fk(id, invoice_no, status, total, balance, due_date),
   contract:contracts(id, contract_no, title, contract_type),
-  estimate:estimates(id, estimate_no, total_cost)
+  estimate:estimates!job_orders_estimate_id_fkey(id, estimate_no, total_cost)
 `;
 
 export async function loadJobOrder(id: string): Promise<JobOrderFull> {

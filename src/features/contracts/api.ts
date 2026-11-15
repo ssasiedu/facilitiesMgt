@@ -24,7 +24,7 @@ const FULL_SELECT = `
   customer:customers(id, display_name, customer_code, payment_terms_days, email, company_email),
   supervisor:profiles!contracts_supervisor_id_fkey(full_name),
   approver:profiles!contracts_approved_by_fkey(full_name),
-  estimate:estimates(id, estimate_no, total_cost, cost_per_month),
+  estimate:estimates!contracts_estimate_id_fkey(id, estimate_no, total_cost, cost_per_month),
   service:services(name)
 `;
 
