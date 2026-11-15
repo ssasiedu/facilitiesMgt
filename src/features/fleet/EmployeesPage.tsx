@@ -60,7 +60,7 @@ export default function EmployeesPage() {
       title="Drivers and crew"
       subtitle="Everyone who works a job: drivers, cleaners, supervisors and gardeners"
       table="employees"
-      select="*, profile:profiles(full_name, email)"
+      select="*, profile:profiles!employees_profile_id_fkey(full_name, email)"
       schema={employeeSchema}
       fields={fields}
       columns={columns}

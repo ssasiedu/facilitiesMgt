@@ -23,8 +23,8 @@ type Row = Tables<'receipts'> & {
     payment_date: string; method_code: string; reference: string | null; unallocated_amount: number;
     payment_methods: { name: string } | null;
     payment_allocations: { amount: number; invoices: { invoice_no: string | null; balance: number } | null }[];
+    survey_invitations: { id: string; status: string; responded_at: string | null }[];
   } | null;
-  survey_invitations: { id: string; status: string; responded_at: string | null }[];
 };
 
 /** Receipts (spec 4.9). One is created automatically for every payment, with a survey link. */
@@ -38,8 +38,8 @@ export default function ReceiptsPage() {
     table: 'receipts',
     select: `*, customer:customers(id, display_name, phone, company_phone, email),
              payment:payments(payment_date, method_code, reference, unallocated_amount, payment_methods(name),
-               payment_allocations(amount, invoices(invoice_no, balance))),
-             survey_invitations(id, status, responded_at)`,
+               payment_allocations(amount, invoices(invoice_no, balance)),
+               survey_invitations(id, status, responded_at))`,
     searchColumns: ['receipt_no'],
     filters,
     defaultSort: { column: 'issued_at', ascending: false },
@@ -74,7 +74,7 @@ export default function ReceiptsPage() {
   };
 
   const pageTotal = table.rows.reduce((t, r) => t + Number(r.amount), 0);
-  const responded = table.rows.filter((r) => r.survey_invitations.some((s) => s.responded_at)).length;
+  const responded = table.rows.filter((r) => (r.payment?.survey_invitations ?? []).some((s) => s.responded_at)).length;
 
   const columns: Column<Row>[] = [
     { key: 'no', header: 'Receipt', sort: 'receipt_no', render: (r) => <span className="font-mono text-xs">{r.receipt_no}</span>, exportValue: (r) => r.receipt_no },
@@ -87,10 +87,10 @@ export default function ReceiptsPage() {
     { key: 'invoices', header: 'Invoices', render: (r) => (r.payment?.payment_allocations ?? []).map((a) => a.invoices?.invoice_no).filter(Boolean).join(', ') || '—',
       exportValue: (r) => (r.payment?.payment_allocations ?? []).map((a) => a.invoices?.invoice_no).join(' '), hideOnMobile: true },
     { key: 'survey', header: 'Survey', render: (r) => {
-      const inv = r.survey_invitations[0];
+      const inv = (r.payment?.survey_invitations ?? [])[0];
       if (!inv) return <span className="text-stone-400">—</span>;
       return inv.responded_at ? <Badge tone="green">Answered</Badge> : <Badge tone="amber">Sent</Badge>;
-    }, exportValue: (r) => (r.survey_invitations[0]?.responded_at ? 'answered' : r.survey_invitations[0] ? 'sent' : ''), hideOnMobile: true },
+    }, exportValue: (r) => { const i = (r.payment?.survey_invitations ?? [])[0]; return i?.responded_at ? 'answered' : i ? 'sent' : ''; }, hideOnMobile: true },
     { key: 'actions', header: '', className: 'text-right', render: (r) => (
       <div className="flex justify-end gap-1">
         <Button variant="ghost" size="sm" aria-label="Download PDF" onClick={() => download(r)}><Download className="h-4 w-4" /></Button>

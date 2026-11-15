@@ -49,7 +49,7 @@ export default function EstimateTemplatesPage() {
   const { data = [], isLoading, refetch } = useQuery({
     queryKey: ['estimate-templates-full'],
     queryFn: async () => check(await supabase.from('estimate_templates')
-      .select('*, service:services(name), estimate_template_lines(*)')
+      .select('*, service:services!estimate_templates_service_id_fkey(name), estimate_template_lines(*)')
       .is('archived_at', null).order('name')) as Template[],
   });
 

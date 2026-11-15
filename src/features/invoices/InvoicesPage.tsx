@@ -38,7 +38,7 @@ export default function InvoicesPage() {
 
   const table = useServerTable<Row>({
     table: 'invoices',
-    select: '*, customer:customers(id, display_name), job_order:job_orders(id, job_no), contract:contracts(id, contract_no)',
+    select: '*, customer:customers(id, display_name), job_order:job_orders!invoices_job_order_id_fkey(id, job_no), contract:contracts(id, contract_no)',
     searchColumns: ['invoice_no', 'customer_name'],
     filters,
     defaultSort: { column: 'issue_date', ascending: false },

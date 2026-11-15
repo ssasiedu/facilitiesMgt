@@ -36,7 +36,7 @@ const FULL_SELECT = `
   officer:profiles!job_orders_officer_id_fkey(id, full_name, phone),
   raiser:profiles!job_orders_raised_by_fkey(id, full_name),
   approver:profiles!job_orders_approved_by_fkey(full_name),
-  invoice:invoices(id, invoice_no, status, total, balance, due_date),
+  invoice:invoices!job_orders_invoice_fk(id, invoice_no, status, total, balance, due_date),
   contract:contracts(id, contract_no, title, contract_type),
   estimate:estimates(id, estimate_no, total_cost)
 `;

@@ -398,6 +398,24 @@ begin
   raise notice 'PASS survey: opens without login, one response only, low score -> follow-up';
 end $$;
 
+-- ---------- 9b. Every report runs ----------
+-- A report that only fails when it is opened is a report nobody tests. Each one is executed here
+-- so a planner error such as an ambiguous column cannot reach the Reports page unnoticed.
+do $$
+declare n bigint;
+begin
+  select count(*) into n from public.rpt_profit_and_loss(current_date - 365, current_date);
+  select count(*) into n from public.rpt_balance_sheet(current_date);
+  select count(*) into n from public.rpt_trial_balance(current_date);
+  select count(*) into n from public.rpt_general_ledger((select id from public.accounts order by code limit 1), current_date - 365, current_date);
+  select count(*) into n from public.rpt_cash_flow(current_date - 365, current_date);
+  select count(*) into n from public.rpt_ar_aging(current_date);
+  select count(*) into n from public.rpt_ap_aging(current_date);
+  select count(*) into n from public.rpt_tax_summary(current_date - 365, current_date);
+  select count(*) into n from public.rpt_expenses_by_category(current_date - 365, current_date);
+  raise notice 'PASS all nine financial reports execute';
+end $$;
+
 -- ---------- 10. Security: every table has RLS ----------
 do $$
 begin

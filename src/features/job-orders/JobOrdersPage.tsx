@@ -42,7 +42,7 @@ export default function JobOrdersPage() {
 
   const table = useServerTable<Row>({
     table: 'job_orders',
-    select: '*, job_order_lines(service:services(name)), officer:profiles!job_orders_officer_id_fkey(full_name), invoice:invoices(invoice_no, status, balance)',
+    select: '*, job_order_lines(service:services(name)), officer:profiles!job_orders_officer_id_fkey(full_name), invoice:invoices!job_orders_invoice_fk(invoice_no, status, balance)',
     searchColumns: ['job_no', 'customer_name', 'site_address'],
     filters,
     defaultSort: { column: 'execution_date', ascending: false },

@@ -44,7 +44,7 @@ export default function MyTasksPage() {
     enabled: !!profile?.id,
     queryFn: async () => {
       let q = supabase.from('tasks')
-        .select('*, task_type:task_types(name), customer:customers(id, display_name), lead:leads(id, name), zone:zones(name)')
+        .select('*, task_type:task_types(name), customer:customers!tasks_customer_id_fkey(id, display_name), lead:leads!tasks_lead_id_fkey(id, name), zone:zones(name)')
         .eq('officer_id', profile?.id as string)
         .order('planned_date')
         .order('priority', { ascending: false });

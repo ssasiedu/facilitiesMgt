@@ -21,7 +21,7 @@ const FULL_SELECT = `
   invoice_lines(*, service:services(id, name)),
   invoice_taxes(*),
   customer:customers(id, display_name, customer_code, phone, company_phone, email, company_email, residential_address, digital_address, tin, payment_terms_days),
-  job_order:job_orders(id, job_no, status),
+  job_order:job_orders!invoices_job_order_id_fkey(id, job_no, status),
   contract:contracts(id, contract_no, title),
   payment_allocations(*, payment:payments(id, payment_no, payment_date, method_code, reference)),
   credit_notes(*),

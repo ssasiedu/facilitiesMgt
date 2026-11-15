@@ -53,7 +53,7 @@ export default function TaskDetailPage() {
     queryKey: ['task', id],
     queryFn: async () => check(await supabase.from('tasks')
       .select(`*, task_type:task_types(name), officer:profiles(id, full_name), zone:zones(name),
-               customer:customers(id, display_name), lead:leads(id, name),
+               customer:customers!tasks_customer_id_fkey(id, display_name), lead:leads!tasks_lead_id_fkey(id, name),
                task_updates(*, author:profiles(full_name)), task_checkins(*), task_comments(*, author:profiles(full_name))`)
       .eq('id', id).single()) as TaskFull,
   });
