@@ -31,13 +31,28 @@ type Person = Tables<'profiles'> & {
 };
 type InviteForm = z.infer<typeof inviteSchema>;
 
+/**
+ * supabase-js reports every non-2xx as the same opaque "Edge Function returned a non-2xx status
+ * code" and hands the actual Response back on error.context. The function always answers with
+ * { error: "..." }, so read it: the reason is the whole value of the message.
+ */
 async function callInviteFunction(body: Record<string, unknown>) {
   const { data, error } = await supabase.functions.invoke('invite-user', { body });
   if (error) {
-    // The function returns a readable message in the body; surface that rather than "non-2xx".
-    const ctx = (error as { context?: { body?: unknown } }).context?.body;
     let message = error.message;
-    if (typeof ctx === 'string') { try { message = (JSON.parse(ctx) as { error?: string }).error ?? message; } catch { message = ctx; } }
+    const ctx: unknown = (error as { context?: unknown }).context;
+    let raw = '';
+    if (typeof Response !== 'undefined' && ctx instanceof Response) {
+      raw = await ctx.clone().text().catch(() => '');
+      if (!raw) message = `${message} (HTTP ${ctx.status})`;
+    } else if (typeof ctx === 'string') {
+      raw = ctx;
+    } else if (ctx && typeof ctx === 'object' && typeof (ctx as { body?: unknown }).body === 'string') {
+      raw = (ctx as { body: string }).body;
+    }
+    if (raw) {
+      try { message = (JSON.parse(raw) as { error?: string }).error ?? raw; } catch { message = raw; }
+    }
     throw new Error(message);
   }
   return data as { ok: boolean; password?: string };
