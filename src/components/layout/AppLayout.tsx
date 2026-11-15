@@ -3,6 +3,7 @@ import { Outlet, useLocation } from 'react-router-dom';
 import { Sidebar } from './Sidebar';
 import { Topbar } from './Topbar';
 import { OfflineBanner } from './OfflineBanner';
+import { PasswordBanner } from './PasswordBanner';
 import { PageSkeleton } from '@/components/ui/Skeleton';
 
 export function AppLayout() {
@@ -16,6 +17,7 @@ export function AppLayout() {
       <div className="flex min-w-0 flex-1 flex-col">
         <Topbar onMenu={() => setMobileOpen(true)} />
         <OfflineBanner />
+        <PasswordBanner />
         <main className="mx-auto w-full max-w-7xl flex-1 px-3 py-4 sm:px-6 sm:py-6" key={location.pathname}>
           <Suspense fallback={<PageSkeleton />}><Outlet /></Suspense>
         </main>

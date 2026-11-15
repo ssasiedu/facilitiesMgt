@@ -3082,6 +3082,7 @@ export type Database = {
           avatar_url: string | null;
           is_active: boolean;
           is_demo: boolean;
+          must_change_password: boolean;
           created_at: string;
           updated_at: string;
           archived_at: string | null;
@@ -4506,6 +4507,7 @@ export type Database = {
       apply_customer_credit: { Args: { p_credit_id: string; p_invoice_id: string; p_amount: number; }; Returns: Json };
       apply_estimate_template: { Args: { p_estimate_id: string; p_template_id: string; }; Returns: Json };
       approve_bill: { Args: { p_bill_id: string; }; Returns: Json };
+      clear_must_change_password: { Args: {  }; Returns: undefined };
       approve_contract: { Args: { p_contract_id: string; }; Returns: Json };
       approve_estimate: { Args: { p_estimate_id: string; }; Returns: Json };
       approve_expense: { Args: { p_expense_id: string; }; Returns: Json };

@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useQuery } from '@tanstack/react-query';
-import { KeyRound, ShieldCheck, UserPlus } from 'lucide-react';
+import { Check, Copy, KeyRound, ShieldCheck, UserPlus } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/lib/supabaseClient';
 import { check, friendlyError } from '@/lib/rpc';
@@ -40,7 +40,7 @@ async function callInviteFunction(body: Record<string, unknown>) {
     if (typeof ctx === 'string') { try { message = (JSON.parse(ctx) as { error?: string }).error ?? message; } catch { message = ctx; } }
     throw new Error(message);
   }
-  return data as { ok: boolean };
+  return data as { ok: boolean; password?: string };
 }
 
 /** Users, their roles and zones (spec 4.14), plus the role matrix from section 3 for reference. */
@@ -55,6 +55,11 @@ export default function UsersPage() {
   const [busy, setBusy] = useState(false);
   const [confirm, setConfirm] = useState<Person | null>(null);
   const [resetting, setResetting] = useState<Person | null>(null);
+  const [tempFor, setTempFor] = useState<Person | null>(null);
+  const [tempChoice, setTempChoice] = useState<'generate' | 'choose'>('generate');
+  const [tempTyped, setTempTyped] = useState('');
+  const [issued, setIssued] = useState<{ person: string; password: string } | null>(null);
+  const [copied, setCopied] = useState(false);
 
   const { data = [], isLoading, refetch } = useQuery({
     queryKey: ['users'],
@@ -108,6 +113,37 @@ export default function UsersPage() {
     } catch (e) { toast.error(friendlyError(e)); } finally { setBusy(false); }
   };
 
+  const issuePassword = async () => {
+    if (!tempFor) return;
+    if (tempChoice === 'choose' && tempTyped.trim().length < 8) {
+      toast.error('A password must be at least 8 characters');
+      return;
+    }
+    setBusy(true);
+    try {
+      const res = await callInviteFunction({
+        action: 'set_password',
+        profile_id: tempFor.id,
+        ...(tempChoice === 'choose' ? { password: tempTyped.trim() } : {}),
+      });
+      if (!res.password) throw new Error('The server did not return a password');
+      setIssued({ person: tempFor.full_name, password: res.password });
+      setTempFor(null);
+      setTempTyped('');
+      setCopied(false);
+      await refetch();
+    } catch (e) { toast.error(friendlyError(e)); } finally { setBusy(false); }
+  };
+
+  const copyPassword = async () => {
+    if (!issued) return;
+    try {
+      await navigator.clipboard.writeText(issued.password);
+      setCopied(true);
+      toast.success('Password copied');
+    } catch { toast.info(issued.password); }
+  };
+
   const sendReset = async (p: Person) => {
     if (!p.email) { toast.error('This person has no email address'); return; }
     setBusy(true);
@@ -140,12 +176,15 @@ export default function UsersPage() {
       <td className="hidden px-3 py-2 text-xs text-stone-500 lg:table-cell">
         {p.user_id ? 'Signed up' : 'Invitation pending'}
         {p.is_demo ? <Badge tone="blue" className="ml-1">Demo</Badge> : null}
+        {p.must_change_password ? <Badge tone="amber" className="ml-1">Temporary password</Badge> : null}
         <span className="block">{formatDateTime(p.created_at)}</span>
       </td>
       <td className="px-3 py-2 text-right">
         <div className="flex flex-wrap justify-end gap-1">
           <Button variant="secondary" size="sm" onClick={() => openEdit(p)}>Roles</Button>
-          <Button variant="ghost" size="sm" icon={<KeyRound className="h-4 w-4" />} onClick={() => setResetting(p)}>Reset</Button>
+          <Button variant="ghost" size="sm" icon={<KeyRound className="h-4 w-4" />}
+            onClick={() => { setTempFor(p); setTempChoice('generate'); setTempTyped(''); }}>Password</Button>
+          <Button variant="ghost" size="sm" onClick={() => setResetting(p)}>Email a reset</Button>
           {p.id === profile?.id ? null : (
             <Button variant="ghost" size="sm" onClick={() => setConfirm(p)}>{p.is_active ? 'Deactivate' : 'Reactivate'}</Button>
           )}
@@ -304,6 +343,65 @@ export default function UsersPage() {
           : `${confirm?.full_name} will be able to sign in again with their existing password.`}
         confirmLabel={confirm?.is_active ? 'Remove access' : 'Restore access'} danger={!!confirm?.is_active}
         loading={busy} onConfirm={() => { if (confirm) void toggleActive(confirm); }} />
+
+      <Modal open={tempFor !== null} onClose={() => setTempFor(null)} size="md"
+        title={tempFor ? `Set a password for ${tempFor.full_name}` : ''}
+        footer={<><Button variant="secondary" onClick={() => setTempFor(null)}>Cancel</Button>
+          <Button loading={busy} onClick={() => void issuePassword()}>Set the password</Button></>}>
+        {tempFor ? (
+          <div className="space-y-4">
+            <p className="text-sm text-stone-600">
+              Use this when someone cannot pick up an email — you read them the password and they sign in
+              straight away. They are asked to replace it with one of their own as soon as they are in,
+              so you do not go on knowing it.
+            </p>
+            <fieldset className="space-y-2">
+              <legend className="text-sm font-medium text-stone-700">Password</legend>
+              <label className="flex items-start gap-2 text-sm">
+                <input type="radio" className="mt-1" checked={tempChoice === 'generate'} onChange={() => setTempChoice('generate')} />
+                <span>Generate one<span className="block text-xs text-stone-500">Twelve characters, avoiding letters and digits that are easy to confuse out loud</span></span>
+              </label>
+              <label className="flex items-start gap-2 text-sm">
+                <input type="radio" className="mt-1" checked={tempChoice === 'choose'} onChange={() => setTempChoice('choose')} />
+                <span>Type one myself</span>
+              </label>
+            </fieldset>
+            {tempChoice === 'choose' ? (
+              <Input label="Password" required value={tempTyped} onChange={(e) => setTempTyped(e.target.value)}
+                hint="At least 8 characters" />
+            ) : null}
+            {tempFor.user_id ? (
+              <p className="rounded-lg bg-amber-50 p-3 text-xs text-amber-900">
+                {tempFor.full_name} already has an account. Their current password stops working immediately.
+              </p>
+            ) : (
+              <p className="rounded-lg bg-stone-50 p-3 text-xs text-stone-600">
+                This creates their account, so they can sign in with {tempFor.email} without waiting for an invitation email.
+              </p>
+            )}
+          </div>
+        ) : null}
+      </Modal>
+
+      <Modal open={issued !== null} onClose={() => setIssued(null)} size="sm" title="Password set"
+        footer={<Button onClick={() => setIssued(null)}>Done</Button>}>
+        {issued ? (
+          <div className="space-y-3">
+            <p className="text-sm text-stone-600">
+              Give this to {issued.person}. It is shown once and is not stored anywhere — if it is lost, set another.
+            </p>
+            <div className="flex items-center gap-2">
+              <code className="flex-1 select-all rounded-lg border border-stone-300 bg-stone-50 px-3 py-2 font-mono text-lg tracking-wide">{issued.password}</code>
+              <Button variant="secondary" size="sm" icon={copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                onClick={() => void copyPassword()}>{copied ? 'Copied' : 'Copy'}</Button>
+            </div>
+            <p className="text-xs text-stone-500">
+              Send it by a different route from the one carrying the sign-in address where you can — a phone call rather
+              than the same inbox. They will be asked to set their own password as soon as they sign in.
+            </p>
+          </div>
+        ) : null}
+      </Modal>
 
       <ConfirmDialog open={resetting !== null} onClose={() => setResetting(null)} title="Send a password reset link?"
         message={`${resetting?.full_name} will get an email at ${resetting?.email ?? 'their address'} with a link to set a new password. You never see or set their password yourself.`}

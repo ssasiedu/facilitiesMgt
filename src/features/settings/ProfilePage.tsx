@@ -5,7 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import { CloudOff, LogOut, MapPin, RefreshCw, ShieldCheck, Smartphone } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/lib/supabaseClient';
-import { check, friendlyError, nullify } from '@/lib/rpc';
+import { check, friendlyError, nullify, rpc } from '@/lib/rpc';
 import { useAuth } from '@/lib/auth';
 import { ROLE_LABELS, MATRIX, MODULE_LABELS, level, type Module } from '@/lib/permissions';
 import { useOfflineQueue, flushQueue } from '@/lib/offlineQueue';
@@ -59,6 +59,11 @@ export default function ProfilePage() {
   const changePassword = pw.handleSubmit(async (values) => {
     const { error } = await supabase.auth.updateUser({ password: values.password });
     if (error) { toast.error(friendlyError(error)); return; }
+    // An administrator may have issued this account a temporary password; it is now their own.
+    if (profile?.must_change_password) {
+      await rpc('clear_must_change_password', {}).catch(() => undefined);
+      await refresh();
+    }
     toast.success('Password changed');
     pw.reset({ password: '', confirm: '' });
   });
@@ -98,7 +103,13 @@ export default function ProfilePage() {
           )}
         </Card>
 
-        <Card title="Password">
+        <Card title="Password" className={profile.must_change_password ? 'border-amber-300' : undefined}>
+          {profile.must_change_password ? (
+            <p className="mb-3 rounded-lg bg-amber-50 p-3 text-sm text-amber-900">
+              You are signed in with a password an administrator set for you. Choose one of your own now —
+              until you do, somebody else knows how to get into your account.
+            </p>
+          ) : null}
           <form onSubmit={(e) => { e.preventDefault(); void changePassword(); }} className="space-y-4">
             <Input label="New password" type="password" autoComplete="new-password" required
               {...pw.register('password')} error={pw.formState.errors.password?.message}
