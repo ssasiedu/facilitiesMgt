@@ -65,13 +65,31 @@ Deno.serve(async (req) => {
     if (!session.callback_token || !token || !sameSecret(token, session.callback_token)) {
       return errorResponse("Callback secret does not match", 401);
     }
-    // 2. the amount this session was opened for, exactly
-    if (Math.abs(Number(session.amount) - claimed.amount) > 0.005) {
+    /* 2. the amount.
+       Hubtel's hosted checkout fixes the amount, so the customer cannot pay a different one — but
+       where the customer bears the transaction fee, Hubtel charges it on top and reports the gross.
+       A GH¢ 1.00 invoice therefore comes back as GH¢ 1.01 charged. Demanding an exact match
+       refuses a payment that really happened, so the rule is: never less than the invoice, and
+       never more than a plausible fee above it. */
+    const expected = Number(session.amount);
+    const charged = claimed.amount;
+    const surcharge = charged - expected;
+    // Hubtel's fee runs to a low single-digit percentage; this is generous without being a hole.
+    const feeCeiling = Math.max(expected * 0.05, 5);
+
+    if (surcharge < -0.005) {
       await admin.from("payment_sessions").update({
-        status: "failed",
-        failure_reason: `Callback said GH¢ ${claimed.amount.toFixed(2)}, the session was opened for GH¢ ${Number(session.amount).toFixed(2)}`,
+        status: "failed", gross_amount: charged,
+        failure_reason: `Only GH¢ ${charged.toFixed(2)} was paid against an invoice of GH¢ ${expected.toFixed(2)}`,
       }).eq("reference", claimed.reference);
-      return errorResponse("Amount does not match the session", 409);
+      return errorResponse("Amount paid is less than the invoice", 409);
+    }
+    if (surcharge > feeCeiling) {
+      await admin.from("payment_sessions").update({
+        status: "failed", gross_amount: charged,
+        failure_reason: `GH¢ ${charged.toFixed(2)} charged against an invoice of GH¢ ${expected.toFixed(2)}, which is more than a transaction fee explains`,
+      }).eq("reference", claimed.reference);
+      return errorResponse("Amount is too far above the session", 409);
     }
     verifiedBy = "token+amount";
 
@@ -92,16 +110,21 @@ Deno.serve(async (req) => {
 
   // The balance can have moved since checkout opened — someone may have paid cash meanwhile. Pay
   // down what is still owed and leave any excess as customer credit, which record_payment handles.
-  const allocate = Math.min(Number(invoice.balance), claimed.amount);
+  /* Credit what the invoice was for. Any surcharge went to the provider, not to us, so recording
+     the gross would overstate our cash and leave the customer's statement wrong by the fee. */
+  const received = provider === "hubtel" ? Math.min(claimed.amount, Number(session.amount)) : claimed.amount;
+  const allocate = Math.min(Number(invoice.balance), received);
   const { data: result, error } = await admin.rpc("record_payment", {
     p_customer_id: invoice.customer_id,
-    p_amount: claimed.amount,
+    p_amount: received,
     p_method: claimed.methodCode,
     p_date: new Date().toISOString().slice(0, 10),
     p_reference: claimed.reference,
     p_bank_account_id: null,
     p_allocations: allocate > 0 ? [{ invoice_id: invoice.id, amount: allocate }] : [],
-    p_notes: `Online payment via ${provider}`,
+    p_notes: claimed.amount > received + 0.005
+      ? `Online payment via ${provider}. Customer was charged GH¢ ${claimed.amount.toFixed(2)}, including GH¢ ${(claimed.amount - received).toFixed(2)} provider fee.`
+      : `Online payment via ${provider}`,
     p_provider: provider,
     p_provider_ref: `${provider}:${claimed.reference}`,
   });
@@ -112,6 +135,7 @@ Deno.serve(async (req) => {
 
   await admin.from("payment_sessions").update({
     status: "paid",
+    gross_amount: claimed.amount,
     payment_id: (result as { payment_id: string }).payment_id,
     completed_at: new Date().toISOString(),
     verified_by: verifiedBy,
