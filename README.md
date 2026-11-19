@@ -108,7 +108,7 @@ document numbering, scheduled job times, the audit log, and data export.
 | Supabase CLI (optional but recommended) | Runs the migrations and deploys functions | `npm i -g supabase` |
 | An SMS account: Hubtel, Arkesel or mNotify | Job alerts, reminders, invoice messages | You also register the sender ID with them |
 | An email account: Resend or any SMTP server | Invoices, receipts, statements | |
-| A Paystack or Hubtel merchant account (optional) | Letting customers pay an invoice online | Leave it off until you need it |
+| A Hubtel merchant account with Sales API keys (optional) | Letting customers pay an invoice online | Leave it off until you need it. Paystack is also supported |
 
 ---
 
@@ -200,6 +200,44 @@ supabase secrets set \
 
 `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` are given to the functions automatically — do not set
 them yourself. Every secret the functions can take is listed in `.env.example`.
+
+### Taking payment on the invoice (Hubtel)
+
+Customers pay from the invoice link through **Hubtel Online Checkout**: mobile money, card, GHQR or
+Hubtel wallet, on a page Hubtel hosts, so no card or wallet details ever touch this system.
+
+```bash
+supabase secrets set \
+  PAYMENT_PROVIDER=hubtel \
+  HUBTEL_API_ID=... HUBTEL_API_KEY=... \
+  HUBTEL_MERCHANT_ACCOUNT=...
+```
+
+These are the **Sales API** keys, which are not the SMS keys. Create them in the Hubtel dashboard
+under the API keys section for Sales, and give the merchant account number the payment settles
+into. Then switch it on in **Settings → Configuration**: choose Hubtel as the payment provider and
+tick *Let customers pay invoices online*.
+
+There is no callback URL to register in the Hubtel dashboard. Each checkout passes its own
+callback address, carrying a secret generated for that one payment.
+
+**How a callback is trusted.** Hubtel does not sign its callbacks, and their own documentation
+leaves securing the webhook to the integrator. Their transaction-status API would settle it, but it
+only accepts requests from an IP address allow-listed with Hubtel, and Edge Functions have no fixed
+outbound IP. So a callback is accepted only when all three of these hold:
+
+1. it carries the secret handed to Hubtel when that checkout was opened,
+2. its client reference names a session that is still pending,
+3. its amount equals, to the pesewa, what the session was opened for.
+
+The status API is still called. Where it answers, the session records
+`verified_by = token+amount+status_api`; where it refuses, `token+amount`; and where it says plainly
+that the reference was *not* paid, the callback is refused. If you run this behind a fixed IP one
+day, give that address to your Hubtel representative and the stronger check starts applying by
+itself, with no code change.
+
+Sessions nobody completes are expired after six hours by a scheduled job, so a late callback can
+never settle an invoice whose balance has since moved.
 
 **10. Store the cron secret and the function URL in Vault.** The scheduled jobs call
 `send-notification` through `pg_net`, and they read the address and the secret from Vault so neither

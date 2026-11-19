@@ -65,42 +65,123 @@ export const paystack = {
 };
 
 function hubtelAuth(): string {
-  const id = Deno.env.get("HUBTEL_CLIENT_ID");
-  const secret = Deno.env.get("HUBTEL_CLIENT_SECRET");
-  if (!id || !secret) throw new Error("HUBTEL_CLIENT_ID / HUBTEL_CLIENT_SECRET are not set");
+  const id = Deno.env.get("HUBTEL_API_ID") ?? Deno.env.get("HUBTEL_CLIENT_ID");
+  const secret = Deno.env.get("HUBTEL_API_KEY") ?? Deno.env.get("HUBTEL_CLIENT_SECRET");
+  if (!id || !secret) throw new Error("Set HUBTEL_API_ID and HUBTEL_API_KEY (the Sales API keys) in the function secrets");
   return "Basic " + btoa(`${id}:${secret}`);
 }
 
+/** Hubtel names the wallet in PaymentDetails.Channel, e.g. mtn-gh, vodafone-gh, tigo-gh. */
+function mapHubtelChannel(channel: string | undefined, paymentType: string | undefined): string {
+  const c = (channel ?? "").toLowerCase();
+  if (c.startsWith("mtn")) return "mtn_momo";
+  if (c.startsWith("vodafone") || c.startsWith("telecel")) return "telecel_cash";
+  if (c.startsWith("tigo") || c.startsWith("airtel") || c.startsWith("at")) return "at_money";
+  const t = (paymentType ?? "").toLowerCase();
+  if (t.includes("card")) return "card";
+  if (t.includes("mobilemoney")) return "mtn_momo";
+  return "card";
+}
+
+/** The documented shape of the Online Checkout callback. */
+interface HubtelCallback {
+  ResponseCode?: string;
+  Status?: string;
+  Data?: {
+    CheckoutId?: string;
+    SalesInvoiceId?: string;
+    ClientReference?: string;
+    Status?: string;
+    Amount?: number;
+    CustomerPhoneNumber?: string;
+    PaymentDetails?: { MobileMoneyNumber?: string; PaymentType?: string; Channel?: string };
+    Description?: string;
+  };
+}
+
 export const hubtelCheckout = {
+  /**
+   * Open a hosted checkout and return the URL to send the customer to. This endpoint needs no IP
+   * allow-listing, which is what makes Hubtel workable from an Edge Function at all.
+   */
   async initialize(req: CheckoutRequest): Promise<string> {
     const merchant = Deno.env.get("HUBTEL_MERCHANT_ACCOUNT");
     if (!merchant) throw new Error("HUBTEL_MERCHANT_ACCOUNT is not set");
-    const res = await fetch("https://payproxyapi.hubtel.com/items/initiate", {
+    // Hubtel caps clientReference at 32 characters and rejects a repeat, so ours is generated per attempt.
+    const reference = req.reference.slice(0, 32);
+    const base = (Deno.env.get("HUBTEL_CHECKOUT_URL") ?? "https://payproxyapi.hubtel.com/items/initiate").replace(/\/$/, "");
+
+    const res = await fetch(base, {
       method: "POST",
       headers: { Authorization: hubtelAuth(), "Content-Type": "application/json" },
       body: JSON.stringify({
-        totalAmount: Number(req.amount.toFixed(2)), description: req.description, callbackUrl: req.webhookUrl, returnUrl: req.callbackUrl,
-        cancellationUrl: req.callbackUrl, merchantAccountNumber: merchant, clientReference: req.reference,
+        totalAmount: Number(req.amount.toFixed(2)),
+        description: req.description.slice(0, 100),
+        callbackUrl: req.webhookUrl,
+        returnUrl: req.callbackUrl,
+        cancellationUrl: req.callbackUrl,
+        merchantAccountNumber: merchant,
+        clientReference: reference,
+        PayeeName: typeof req.metadata.customer_name === "string" ? req.metadata.customer_name : undefined,
+        PayeeMobileNumber: req.phone ?? undefined,
+        PayeeEmail: req.email ?? undefined,
       }),
     });
-    const body = await res.json() as { responseCode?: string; data?: { checkoutUrl: string }; message?: string };
-    if (!res.ok || !body.data?.checkoutUrl) throw new Error(`Hubtel: ${body.message ?? res.status}`);
+
+    const body = await res.json().catch(() => ({})) as {
+      responseCode?: string; status?: string; message?: string;
+      data?: { checkoutUrl?: string; checkoutId?: string; clientReference?: string };
+    };
+    if (!res.ok || body.responseCode !== "0000" || !body.data?.checkoutUrl) {
+      throw new Error(`Hubtel refused the checkout: ${body.message ?? body.status ?? `HTTP ${res.status}`}`);
+    }
     return body.data.checkoutUrl;
   },
-  /** Hubtel callbacks are not signed, so the transaction is confirmed with Hubtel's status API before it is recorded. */
-  async verifyCallback(rawBody: string): Promise<VerifiedPayment | null> {
-    const cb = JSON.parse(rawBody) as { Data?: { ClientReference?: string } };
-    const ref = cb.Data?.ClientReference;
+
+  /**
+   * Read a callback. This says only what Hubtel claims; it proves nothing on its own, because the
+   * callback is unsigned and anyone who learns the URL could post to it. The caller must still
+   * check the secret in the URL and that the amount matches the session.
+   */
+  parseCallback(rawBody: string): VerifiedPayment | null {
+    const cb = JSON.parse(rawBody) as HubtelCallback;
+    const d = cb.Data;
+    const paid = cb.ResponseCode === "0000" && (cb.Status ?? d?.Status ?? "").toLowerCase() === "success";
+    if (!paid || !d?.ClientReference) return null;
+    return {
+      reference: String(d.ClientReference),
+      amount: Number(d.Amount ?? 0),
+      methodCode: mapHubtelChannel(d.PaymentDetails?.Channel, d.PaymentDetails?.PaymentType),
+      metadata: {
+        checkout_id: d.CheckoutId ?? null,
+        sales_invoice_id: d.SalesInvoiceId ?? null,
+        payer_phone: d.CustomerPhoneNumber ?? d.PaymentDetails?.MobileMoneyNumber ?? null,
+        description: d.Description ?? null,
+      },
+    };
+  },
+
+  /**
+   * Ask Hubtel directly whether a reference was paid. Hubtel only answers this from an IP address
+   * they have allow-listed, and an Edge Function's outbound IP is neither fixed nor knowable, so a
+   * refusal here is expected and must not be read as "not paid" — hence the three-way answer.
+   */
+  async confirm(reference: string): Promise<"paid" | "not-paid" | "unavailable"> {
     const merchant = Deno.env.get("HUBTEL_MERCHANT_ACCOUNT");
-    if (!ref || !merchant) return null;
-    const res = await fetch(`https://api-txnstatus.hubtel.com/transactions/${merchant}/status?clientReference=${encodeURIComponent(ref)}`, {
-      headers: { Authorization: hubtelAuth() },
-    });
-    const body = await res.json() as { data?: { status?: string; amount?: number; paymentMethod?: string } };
-    if (!res.ok || body.data?.status?.toLowerCase() !== "paid") return null;
-    const pm = (body.data.paymentMethod ?? "").toLowerCase();
-    const methodCode = pm.includes("mtn") ? "mtn_momo" : pm.includes("vodafone") || pm.includes("telecel") ? "telecel_cash"
-      : pm.includes("airtel") || pm.includes("tigo") ? "at_money" : pm.includes("card") ? "card" : "mtn_momo";
-    return { reference: ref, amount: Number(body.data.amount ?? 0), methodCode, metadata: {} };
+    if (!merchant) return "unavailable";
+    const url = `https://api-txnstatus.hubtel.com/transactions/${merchant}/status?clientReference=${encodeURIComponent(reference)}`;
+    try {
+      const res = await fetch(url, { headers: { Authorization: hubtelAuth() } });
+      if (res.status === 401 || res.status === 403 || res.status === 404) return "unavailable";
+      if (!res.ok) return "unavailable";
+      const body = await res.json().catch(() => ({})) as { responseCode?: string; data?: { status?: string } | { status?: string }[] };
+      const row = Array.isArray(body.data) ? body.data[0] : body.data;
+      const status = (row?.status ?? "").toLowerCase();
+      if (status === "paid" || status === "success") return "paid";
+      if (status === "unpaid" || status === "failed" || status === "cancelled") return "not-paid";
+      return "unavailable";
+    } catch {
+      return "unavailable";   // a network refusal is not evidence either way
+    }
   },
 };

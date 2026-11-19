@@ -182,16 +182,27 @@ export default function ConfigurationPage() {
           <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
             <Input label="SMS provider" required {...form.register('sms_provider')} error={form.formState.errors.sms_provider?.message} />
             <Input label="Email provider" required {...form.register('email_provider')} error={form.formState.errors.email_provider?.message} />
-            <Input label="Payment provider" required {...form.register('payment_provider')} error={form.formState.errors.payment_provider?.message} />
+            <Select label="Payment provider" required
+              options={[{ value: 'hubtel', label: 'Hubtel' }, { value: 'paystack', label: 'Paystack' }]}
+              {...form.register('payment_provider')} error={form.formState.errors.payment_provider?.message} />
           </div>
           <div className="mt-3">
             <Checkbox label="Let customers pay invoices online" {...form.register('online_payments_enabled')}
               hint="Adds a Pay now button to the invoice link. The provider keys stay in Edge Function secrets." />
           </div>
           <p className="mt-2 text-xs text-stone-500">
-            Changing a provider name here only tells the Edge Functions which one to call. The keys themselves are set with
+            Changing a provider here only tells the Edge Functions which one to call. The keys themselves are set with
             <code className="mx-1 rounded bg-stone-100 px-1">supabase secrets set</code> and never reach the browser.
           </p>
+          {form.watch('payment_provider') === 'hubtel' && form.watch('online_payments_enabled') ? (
+            <p className="mt-2 rounded-lg bg-stone-50 p-3 text-xs text-stone-600">
+              Hubtel does not sign its payment callback, so each checkout carries a secret of its own in the callback
+              address, and a callback is only accepted when that secret matches, the reference is one we opened, and the
+              amount is exactly what we asked for. Hubtel's status API is consulted as well, but it only answers
+              allow-listed IP addresses, which this app cannot offer — so it strengthens the check when it answers and
+              never weakens it when it does not.
+            </p>
+          ) : null}
         </Card>
 
         <div className="sticky bottom-0 -mx-4 flex justify-end gap-2 border-t border-stone-200 bg-white/95 px-4 py-3 backdrop-blur">

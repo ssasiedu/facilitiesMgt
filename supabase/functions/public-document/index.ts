@@ -72,16 +72,30 @@ Deno.serve(async (req) => {
     if (!settings.online_payments_enabled) return errorResponse("Online payment is not enabled", 403);
     const invoice = await invoiceByToken(body.token!);
     if (!invoice || Number(invoice.balance) <= 0) return errorResponse("Nothing to pay on this invoice", 400);
+    // Hubtel caps clientReference at 32 characters and refuses one it has seen before.
     const reference = "P" + crypto.randomUUID().replace(/-/g, "").slice(0, 20) + Date.now().toString(36);
+    /* Hubtel does not sign its callback, so the callback URL carries a secret of ours instead.
+       It goes to Hubtel over TLS at checkout and appears nowhere else, so a caller that presents
+       it is Hubtel answering about this one session. */
+    const callbackToken = crypto.randomUUID().replace(/-/g, "") + crypto.randomUUID().replace(/-/g, "");
     const appUrl = (Deno.env.get("PUBLIC_APP_URL") ?? settings.public_app_url).replace(/\/$/, "");
-    const fnUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/payment-webhook?provider=${settings.payment_provider}`;
-    const { error } = await admin.from("payment_sessions").insert({ reference, provider: settings.payment_provider, invoice_id: invoice.id, amount: invoice.balance });
+    const fnUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/payment-webhook`
+      + `?provider=${encodeURIComponent(settings.payment_provider)}&token=${callbackToken}`;
+
+    const { error } = await admin.from("payment_sessions").insert({
+      reference, provider: settings.payment_provider, invoice_id: invoice.id,
+      amount: invoice.balance, callback_token: callbackToken,
+    });
     if (error) return errorResponse(error.message, 500);
+
     const request = {
       amount: Number(invoice.balance), email: invoice.customer?.email ?? invoice.customer?.company_email ?? null,
       phone: invoice.customer?.phone ?? invoice.customer?.company_phone ?? null, reference,
       description: `${settings.company_name} invoice ${invoice.invoice_no}`, callbackUrl: `${appUrl}/p/invoice/${body.token}?paid=1`, webhookUrl: fnUrl,
-      metadata: { invoice_no: invoice.invoice_no, reference },
+      metadata: {
+        invoice_no: invoice.invoice_no, reference,
+        customer_name: invoice.customer?.display_name ?? null,
+      },
     };
     try {
       const url = settings.payment_provider === "hubtel" ? await hubtelCheckout.initialize(request) : await paystack.initialize(request);
