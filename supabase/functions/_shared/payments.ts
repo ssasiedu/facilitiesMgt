@@ -64,11 +64,28 @@ export const paystack = {
   },
 };
 
+/**
+ * The Sales API keys, which are NOT the SMS keys. HUBTEL_CLIENT_ID and HUBTEL_CLIENT_SECRET are
+ * the Programmable SMS credentials and are deliberately not accepted here: Hubtel answers them
+ * with a bare 401 on the checkout endpoint, which is a miserable thing to have to diagnose.
+ */
 function hubtelAuth(): string {
-  const id = Deno.env.get("HUBTEL_API_ID") ?? Deno.env.get("HUBTEL_CLIENT_ID");
-  const secret = Deno.env.get("HUBTEL_API_KEY") ?? Deno.env.get("HUBTEL_CLIENT_SECRET");
-  if (!id || !secret) throw new Error("Set HUBTEL_API_ID and HUBTEL_API_KEY (the Sales API keys) in the function secrets");
+  const id = Deno.env.get("HUBTEL_API_ID");
+  const secret = Deno.env.get("HUBTEL_API_KEY");
+  if (!id || !secret) {
+    throw new Error(
+      "HUBTEL_API_ID and HUBTEL_API_KEY are not set. These are the Sales API keys, created under " +
+      "Manage > Programmable Integrations, and are different from the SMS keys.",
+    );
+  }
   return "Basic " + btoa(`${id}:${secret}`);
+}
+
+/** Read a response without assuming it is JSON: an auth failure often carries no body at all. */
+async function readJson(res: Response): Promise<{ parsed: Record<string, unknown> | null; text: string }> {
+  const text = await res.text().catch(() => "");
+  if (!text.trim()) return { parsed: null, text: "" };
+  try { return { parsed: JSON.parse(text) as Record<string, unknown>, text }; } catch { return { parsed: null, text }; }
 }
 
 /** Hubtel names the wallet in PaymentDetails.Channel, e.g. mtn-gh, vodafone-gh, tigo-gh. */
@@ -128,12 +145,23 @@ export const hubtelCheckout = {
       }),
     });
 
-    const body = await res.json().catch(() => ({})) as {
+    const { parsed, text } = await readJson(res);
+    const body = (parsed ?? {}) as {
       responseCode?: string; status?: string; message?: string;
       data?: { checkoutUrl?: string; checkoutId?: string; clientReference?: string };
     };
+
+    if (res.status === 401 || res.status === 403) {
+      throw new Error(
+        "Hubtel rejected the credentials (HTTP " + res.status + "). Check that HUBTEL_API_ID and " +
+        "HUBTEL_API_KEY are the Sales API keys, not the SMS keys, and that HUBTEL_MERCHANT_ACCOUNT " +
+        "is the account number shown for Web Checkout.",
+      );
+    }
     if (!res.ok || body.responseCode !== "0000" || !body.data?.checkoutUrl) {
-      throw new Error(`Hubtel refused the checkout: ${body.message ?? body.status ?? `HTTP ${res.status}`}`);
+      const detail = body.message ?? body.status
+        ?? (text ? text.slice(0, 200) : `HTTP ${res.status} with an empty body`);
+      throw new Error(`Hubtel refused the checkout: ${detail}`);
     }
     return body.data.checkoutUrl;
   },
@@ -174,7 +202,8 @@ export const hubtelCheckout = {
       const res = await fetch(url, { headers: { Authorization: hubtelAuth() } });
       if (res.status === 401 || res.status === 403 || res.status === 404) return "unavailable";
       if (!res.ok) return "unavailable";
-      const body = await res.json().catch(() => ({})) as { responseCode?: string; data?: { status?: string } | { status?: string }[] };
+      const { parsed } = await readJson(res);
+      const body = (parsed ?? {}) as { responseCode?: string; data?: { status?: string } | { status?: string }[] };
       const row = Array.isArray(body.data) ? body.data[0] : body.data;
       const status = (row?.status ?? "").toLowerCase();
       if (status === "paid" || status === "success") return "paid";
