@@ -11,15 +11,28 @@ import { truckAvailability } from './api';
  * Truck picker used by the job order form (spec 4.5). Filters by date range and the truck type
  * the service needs. Off-Road and already-booked trucks are disabled, with the reason shown.
  */
-export function TruckPicker({ from, to, requiredType, selected, onChange, excludeJob, disabled }: {
-  from: string; to: string; requiredType?: string | null; selected: string[];
+/** Same day: show the clock. Across days: show the dates, since the clock alone would mislead. */
+function bookingWhen(from: string, to: string) {
+  const a = new Date(from), b = new Date(to);
+  const clock = (d: Date) => d.toTimeString().slice(0, 5);
+  const wholeDay = clock(a) === '00:00' && clock(b) === '00:00';
+  const sameDay = a.toDateString() === new Date(b.getTime() - 1).toDateString();
+  if (wholeDay) return sameDay ? `${formatDate(from)}, all day` : `${formatDate(from)} – ${formatDate(new Date(b.getTime() - 1).toISOString())}`;
+  if (sameDay) return `${formatDate(from)}, ${clock(a)}–${clock(b)}`;
+  return `${formatDate(from)} ${clock(a)} – ${formatDate(to)} ${clock(b)}`;
+}
+
+export function TruckPicker({ from, to, startTime, endTime, requiredType, selected, onChange, excludeJob, disabled }: {
+  from: string; to: string; startTime?: string; endTime?: string; requiredType?: string | null; selected: string[];
   onChange: (ids: string[]) => void; excludeJob?: string; disabled?: boolean;
 }) {
   const enabled = !!from;
+  // Both times or neither: a half-filled window would narrow the search on nothing.
+  const window = startTime && endTime ? { start: startTime, end: endTime } : null;
   const { data = [], isLoading, error } = useQuery({
-    queryKey: ['truck-availability', from, to, requiredType ?? '', excludeJob ?? ''],
+    queryKey: ['truck-availability', from, to, requiredType ?? '', excludeJob ?? '', window?.start ?? '', window?.end ?? ''],
     enabled,
-    queryFn: () => truckAvailability(from, to || from, requiredType ?? undefined, excludeJob),
+    queryFn: () => truckAvailability(from, to || from, requiredType ?? undefined, excludeJob, window?.start, window?.end),
   });
 
   if (!enabled) return <p className="text-sm text-stone-500">Choose an execution date to see which trucks are free.</p>;
@@ -70,8 +83,9 @@ export function TruckPicker({ from, to, requiredType, selected, onChange, exclud
               {t.bookings.length ? (
                 <ul className="mt-2 space-y-0.5">
                   {t.bookings.map((b) => (
-                    <li key={b.job_id} className="text-xs text-amber-800">
-                      {b.job_no}: {formatDate(b.from)}{b.to !== b.from ? ` – ${formatDate(b.to)}` : ''}{b.customer ? ` · ${b.customer}` : ''}
+                    <li key={`${b.job_id}-${b.from}`} className={cn('text-xs', b.clashes ? 'font-medium text-amber-800' : 'text-stone-500')}>
+                      {b.job_no}: {bookingWhen(b.from, b.to)}{b.customer ? ` · ${b.customer}` : ''}
+                      {b.clashes ? '' : ' · does not clash'}
                     </li>
                   ))}
                 </ul>

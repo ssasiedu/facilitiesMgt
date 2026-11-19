@@ -2308,6 +2308,8 @@ export type Database = {
           execution_date: string;
           end_date: string | null;
           time_window: string | null;
+          start_time: string | null;
+          end_time: string | null;
           estimate_id: string | null;
           contract_id: string | null;
           subtotal: number;

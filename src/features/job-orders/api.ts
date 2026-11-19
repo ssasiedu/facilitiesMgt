@@ -49,16 +49,20 @@ export async function loadJobOrder(id: string): Promise<JobOrderFull> {
 export interface TruckAvailability {
   truck_id: string; registration_no: string; fleet_code: string | null; truck_type: string; status: string;
   off_road_reason: string | null; expected_return_date: string | null; driver_id: string | null; driver_name: string | null;
-  capacity: string | null; bookings: { job_id: string; job_no: string | null; customer: string | null; from: string; to: string }[];
+  capacity: string | null; bookings: { job_id: string; job_no: string | null; customer: string | null; from: string; to: string; clashes: boolean }[];
   available: boolean; reason: string | null;
 }
 
-export const truckAvailability = (from: string, to: string, type?: string, excludeJob?: string) =>
-  rpc<TruckAvailability[]>('get_truck_availability', { p_from: from, p_to: to, p_type: type || undefined, p_exclude_job: excludeJob || undefined });
+/** Times are optional: without them the job holds its trucks for the whole day, as it always did. */
+export const truckAvailability = (from: string, to: string, type?: string, excludeJob?: string, start?: string, end?: string) =>
+  rpc<TruckAvailability[]>('get_truck_availability', {
+    p_from: from, p_to: to, p_type: type || undefined, p_exclude_job: excludeJob || undefined,
+    p_start: start || undefined, p_end: end || undefined,
+  });
 
 const HEADER_FIELDS = [
   'customer_id', 'contact_id', 'channel', 'priority', 'site_address', 'digital_address', 'site_lat', 'site_lng',
-  'officer_id', 'execution_date', 'end_date', 'time_window', 'contract_id', 'estimate_id', 'instructions',
+  'officer_id', 'execution_date', 'end_date', 'start_time', 'end_time', 'contract_id', 'estimate_id', 'instructions',
 ] as const;
 
 function headerRow(v: JobOrderForm) {

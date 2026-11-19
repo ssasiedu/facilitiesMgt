@@ -212,10 +212,57 @@ do $$
 begin
   begin
     insert into public.truck_bookings (truck_id, job_order_id, period)
-    values ((select v from pg_temp.t where k = 'truck2'), (select v from pg_temp.t where k = 'job_future'), daterange(current_date + 1, current_date + 3, '[]'));
+    values ((select v from pg_temp.t where k = 'truck2'), (select v from pg_temp.t where k = 'job_future'),
+            public.span_of(current_date + 1, current_date + 3, null, null));
     raise exception 'overlap must fail';
   exception when exclusion_violation then null; end;
   raise notice 'PASS overlapping truck booking refused by the database';
+end $$;
+
+-- ---------- 3b. The same truck, twice in one day, at different times ----------
+do $$
+declare v_truck uuid; v_job uuid; v_day date := current_date + 45; n int;
+begin
+  select v into v_truck from pg_temp.t where k = 'truck1';
+  select v into v_job from pg_temp.t where k = 'job_future';
+
+  insert into public.truck_bookings (truck_id, job_order_id, period)
+  values (v_truck, v_job, public.span_of(v_day, v_day, time '11:00', time '14:00'));
+
+  -- the afternoon is still free, which is the whole point
+  insert into public.truck_bookings (truck_id, job_order_id, period)
+  values (v_truck, v_job, public.span_of(v_day, v_day, time '15:00', time '16:00'));
+
+  -- and so is the hour between them, because the range is half open
+  insert into public.truck_bookings (truck_id, job_order_id, period)
+  values (v_truck, v_job, public.span_of(v_day, v_day, time '14:00', time '15:00'));
+
+  begin
+    insert into public.truck_bookings (truck_id, job_order_id, period)
+    values (v_truck, v_job, public.span_of(v_day, v_day, time '13:00', time '13:30'));
+    raise exception 'a genuine overlap must still fail';
+  exception when exclusion_violation then null; end;
+
+  begin
+    insert into public.truck_bookings (truck_id, job_order_id, period)
+    values (v_truck, v_job, public.span_of(v_day, v_day, null, null));
+    raise exception 'a whole-day booking over existing jobs must fail';
+  exception when exclusion_violation then null; end;
+
+  select count(*) into n from public.get_truck_availability(v_day, v_day, null, null, time '16:00', time '17:30')
+  where truck_id = v_truck and available;
+  assert n = 1, 'the picker must offer the truck in the free slot after 16:00';
+
+  select count(*) into n from public.get_truck_availability(v_day, v_day, null, null, time '12:00', time '13:00')
+  where truck_id = v_truck and available;
+  assert n = 0, 'the picker must not offer the truck during a booked slot';
+
+  select count(*) into n from public.get_truck_availability(v_day, v_day, null, null)
+  where truck_id = v_truck and available;
+  assert n = 0, 'with no times the whole day is wanted, and the day is taken';
+
+  delete from public.truck_bookings where truck_id = v_truck and lower(period)::date = v_day;
+  raise notice 'PASS one truck takes several jobs a day; real overlaps still refused';
 end $$;
 
 select pg_temp.login('t.fleet1@test.local');

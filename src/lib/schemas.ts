@@ -106,10 +106,14 @@ export const jobOrderSchema = z.object({
   customer_id: uuid, contact_id: optUuid, channel: z.enum(['call_in', 'walk_in', 'sales']), priority: z.enum(['low', 'normal', 'high', 'urgent']),
   site_address: reqText('Site address'), digital_address: digitalAddress, site_lat: z.coerce.number().min(-90).max(90).optional().or(z.literal('')),
   site_lng: z.coerce.number().min(-180).max(180).optional().or(z.literal('')),
-  officer_id: optUuid, execution_date: dateStr, end_date: optDate, time_window: optText, contract_id: optUuid, estimate_id: optUuid,
+  officer_id: optUuid, execution_date: dateStr, end_date: optDate, start_time: optText, end_time: optText, contract_id: optUuid, estimate_id: optUuid,
   instructions: optText, lines: z.array(jobLineSchema).min(1, 'Add at least one service line'),
   truck_ids: z.array(z.string().uuid()), driver_id: optUuid, crew_ids: z.array(z.string().uuid()),
-}).refine((v) => !v.end_date || v.end_date >= v.execution_date, { path: ['end_date'], message: 'End date is before the start date' });
+}).refine((v) => !v.end_date || v.end_date >= v.execution_date, { path: ['end_date'], message: 'End date is before the start date' })
+  .refine((v) => !!v.start_time === !!v.end_time, { path: ['end_time'], message: 'Give both times, or neither to hold the whole day' })
+  // Only a single-day job needs the end after the start; an overnight job ends the next morning.
+  .refine((v) => !v.start_time || !v.end_time || (v.end_date && v.end_date > v.execution_date) || v.end_time > v.start_time,
+    { path: ['end_time'], message: 'The end time is before the start time' });
 export type JobOrderForm = z.infer<typeof jobOrderSchema>;
 
 export const completeJobSchema = z.object({

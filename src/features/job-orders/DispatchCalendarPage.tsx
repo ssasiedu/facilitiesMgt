@@ -25,15 +25,25 @@ interface Booking {
   job: { id: string; job_no: string | null; customer_name: string | null; status: string; execution_date: string; end_date: string | null; time_window: string | null } | null;
 }
 
-/** Parse a Postgres daterange like [2026-11-12,2026-11-14) into inclusive start/end dates. */
-function parseRange(period: string): { start: string; end: string } {
-  const m = /^([[(])([^,]*),([^)\]]*)([)\]])$/.exec(period);
-  if (!m) return { start: period, end: period };
-  const startRaw = m[2];
-  const endRaw = m[3];
-  const start = m[1] === '(' ? isoDate(addDays(new Date(startRaw), 1)) : startRaw;
-  const end = m[4] === ')' && endRaw ? isoDate(addDays(new Date(endRaw), -1)) : endRaw || start;
-  return { start, end };
+/**
+ * Parse a Postgres tstzrange such as ["2026-11-12 11:00:00+00","2026-11-12 14:00:00+00") into the
+ * days it covers and, when it sits inside one day, the clock to show in the cell. The upper bound
+ * is exclusive, so a booking ending at midnight belongs to the previous day.
+ */
+function parseRange(period: string): { start: string; end: string; clock: string | null } {
+  const m = /^([[(])"?([^",]*)"?,"?([^")\]]*)"?([)\]])$/.exec(period);
+  if (!m) return { start: period, end: period, clock: null };
+  const lo = new Date(m[2]);
+  const hiRaw = m[3] ? new Date(m[3]) : lo;
+  // An exclusive upper bound one millisecond past midnight still means the day before.
+  const hi = m[4] === ')' ? new Date(hiRaw.getTime() - 1) : hiRaw;
+  const hhmm = (d: Date) => d.toTimeString().slice(0, 5);
+  const wholeDay = hhmm(lo) === '00:00' && hhmm(hiRaw) === '00:00';
+  return {
+    start: isoDate(lo),
+    end: isoDate(hi),
+    clock: wholeDay ? null : `${hhmm(lo)}–${hhmm(hiRaw)}`,
+  };
 }
 
 /** Dispatch calendar by day, week or month, with one row per truck (spec 4.4). */
@@ -137,7 +147,7 @@ export default function DispatchCalendarPage() {
                         if (b.truck_id !== t.id) return false;
                         const { start, end } = parseRange(b.period);
                         return iso >= start && iso <= end;
-                      });
+                      }).sort((a, b) => (parseRange(a.period).clock ?? '').localeCompare(parseRange(b.period).clock ?? ''));
                       return (
                         <td key={iso} className={cn('border-b border-stone-100 p-1 align-top', isSameDay(d, new Date()) && 'bg-brand-50/40')}>
                           {cell.map((b) => (
@@ -145,7 +155,8 @@ export default function DispatchCalendarPage() {
                               className="mb-1 block rounded-md border border-brand-200 bg-brand-50 px-1.5 py-1 text-xs hover:bg-brand-100">
                               <span className="block font-medium text-brand-800">{b.job?.job_no}</span>
                               <span className="block truncate text-stone-600">{b.job?.customer_name}</span>
-                              {b.job?.time_window ? <span className="block text-stone-500">{b.job.time_window}</span> : null}
+                              {/* the booking's own window, so two jobs on one truck read in order */}
+                              <span className="block text-stone-500">{parseRange(b.period).clock ?? 'all day'}</span>
                             </Link>
                           ))}
                         </td>

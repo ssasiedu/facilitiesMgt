@@ -32,7 +32,7 @@ const EMPTY_LINE = { service_id: '', description: '', quantity: 1, unit_price: 0
 const DEFAULTS: JobOrderForm = {
   customer_id: '', contact_id: '', channel: 'call_in', priority: 'normal',
   site_address: '', digital_address: '', site_lat: '', site_lng: '',
-  officer_id: '', execution_date: isoDate(), end_date: '', time_window: '',
+  officer_id: '', execution_date: isoDate(), end_date: '', start_time: '', end_time: '',
   contract_id: '', estimate_id: '', instructions: '',
   lines: [EMPTY_LINE], truck_ids: [], driver_id: '', crew_ids: [],
 };
@@ -76,7 +76,8 @@ export default function JobOrderFormPage() {
       site_address: j.site_address ?? '', digital_address: j.digital_address ?? '',
       site_lat: j.site_lat === null ? '' : String(j.site_lat), site_lng: j.site_lng === null ? '' : String(j.site_lng),
       officer_id: j.officer_id ?? '', execution_date: j.execution_date, end_date: j.end_date ?? '',
-      time_window: j.time_window ?? '', contract_id: j.contract_id ?? '', estimate_id: j.estimate_id ?? '',
+      start_time: (j.start_time ?? '').slice(0, 5), end_time: (j.end_time ?? '').slice(0, 5),
+      contract_id: j.contract_id ?? '', estimate_id: j.estimate_id ?? '',
       instructions: j.instructions ?? '',
       lines: [...j.job_order_lines].sort((a, b) => a.sort_order - b.sort_order).map((l) => ({
         service_id: l.service_id, description: l.description ?? '', quantity: Number(l.quantity),
@@ -238,7 +239,14 @@ export default function JobOrderFormPage() {
             <div className="space-y-4">
               <Input label="Execution date" type="date" required error={errors.execution_date?.message as string | undefined} {...form.register('execution_date')} />
               <Input label="End date" type="date" hint="For jobs over several days" error={errors.end_date?.message as string | undefined} {...form.register('end_date')} />
-              <Input label="Time window" placeholder="e.g. 08:00 – 12:00" {...form.register('time_window')} />
+              <div className="grid grid-cols-2 gap-3">
+                <Input label="Start time" type="time" error={errors.start_time?.message as string | undefined} {...form.register('start_time')} />
+                <Input label="End time" type="time" error={errors.end_time?.message as string | undefined} {...form.register('end_time')} />
+              </div>
+              <p className="text-xs text-stone-500">
+                Give both times and the truck and crew are only held for that window, so they can take another job
+                the same day. Leave both blank to hold them for the whole day.
+              </p>
             </div>
           </Card>
 
@@ -250,6 +258,7 @@ export default function JobOrderFormPage() {
               </p>
             ) : null}
             <TruckPicker from={values.execution_date} to={values.end_date || values.execution_date}
+              startTime={values.start_time} endTime={values.end_time}
               requiredType={requiredTruckType} excludeJob={id} selected={values.truck_ids}
               onChange={(ids) => form.setValue('truck_ids', ids)} />
           </Card>
