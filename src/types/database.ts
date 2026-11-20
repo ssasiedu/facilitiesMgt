@@ -871,7 +871,7 @@ export type Database = {
           code: string;
           name: string;
           category: string;
-          unit_of_measure: string;
+          unit_of_measure?: string;
           unit_cost?: number;
           rate_basis?: string;
           cost_per_trip?: number;
@@ -1151,7 +1151,7 @@ export type Database = {
         Insert: {
           id?: string;
           customer_code?: string | null;
-          customer_type: string;
+          customer_type?: string;
           display_name?: string | null;
           title?: string | null;
           first_name?: string | null;
@@ -1286,25 +1286,22 @@ export type Database = {
           id: string;
           employee_id: string;
           job_order_id: string;
-          period: string;
+          period: unknown;
           active: boolean;
-          created_at: string;
         };
         Insert: {
           id?: string;
           employee_id: string;
           job_order_id: string;
-          period: string;
+          period: unknown;
           active?: boolean;
-          created_at?: string;
         };
         Update: {
           id?: string;
           employee_id?: string;
           job_order_id?: string;
-          period?: string;
+          period?: unknown;
           active?: boolean;
-          created_at?: string;
         };
         Relationships: [];
       };
@@ -1333,7 +1330,7 @@ export type Database = {
           id?: string;
           employee_code?: string | null;
           full_name: string;
-          role_type: string;
+          role_type?: string;
           phone?: string | null;
           ghana_card_no?: string | null;
           daily_rate?: number;
@@ -1874,7 +1871,7 @@ export type Database = {
           truck_id: string;
           log_date?: string;
           litres: number;
-          cost: number;
+          cost?: number;
           odometer_km?: number | null;
           job_order_id?: string | null;
           station?: string | null;
@@ -2308,8 +2305,6 @@ export type Database = {
           execution_date: string;
           end_date: string | null;
           time_window: string | null;
-          start_time: string | null;
-          end_time: string | null;
           estimate_id: string | null;
           contract_id: string | null;
           subtotal: number;
@@ -2343,6 +2338,8 @@ export type Database = {
           created_at: string;
           updated_at: string;
           archived_at: string | null;
+          start_time: string | null;
+          end_time: string | null;
         };
         Insert: {
           id?: string;
@@ -2395,6 +2392,8 @@ export type Database = {
           created_at?: string;
           updated_at?: string;
           archived_at?: string | null;
+          start_time?: string | null;
+          end_time?: string | null;
         };
         Update: {
           id?: string;
@@ -2447,6 +2446,8 @@ export type Database = {
           created_at?: string;
           updated_at?: string;
           archived_at?: string | null;
+          start_time?: string | null;
+          end_time?: string | null;
         };
         Relationships: [];
       };
@@ -2681,6 +2682,45 @@ export type Database = {
           updated_at?: string;
           created_by?: string | null;
           archived_at?: string | null;
+        };
+        Relationships: [];
+      };
+      list_options: {
+        Row: {
+          id: string;
+          category: string;
+          value: string;
+          label: string;
+          sort_order: number;
+          numeric_value: number | null;
+          is_default: boolean;
+          archived_at: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          category: string;
+          value: string;
+          label: string;
+          sort_order?: number;
+          numeric_value?: number | null;
+          is_default?: boolean;
+          archived_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          category?: string;
+          value?: string;
+          label?: string;
+          sort_order?: number;
+          numeric_value?: number | null;
+          is_default?: boolean;
+          archived_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
         };
         Relationships: [];
       };
@@ -2964,6 +3004,11 @@ export type Database = {
           payment_id: string | null;
           created_at: string;
           completed_at: string | null;
+          callback_token: string | null;
+          verified_by: string | null;
+          provider_ref: string | null;
+          failure_reason: string | null;
+          gross_amount: number | null;
         };
         Insert: {
           reference: string;
@@ -2974,6 +3019,11 @@ export type Database = {
           payment_id?: string | null;
           created_at?: string;
           completed_at?: string | null;
+          callback_token?: string | null;
+          verified_by?: string | null;
+          provider_ref?: string | null;
+          failure_reason?: string | null;
+          gross_amount?: number | null;
         };
         Update: {
           reference?: string;
@@ -2984,6 +3034,11 @@ export type Database = {
           payment_id?: string | null;
           created_at?: string;
           completed_at?: string | null;
+          callback_token?: string | null;
+          verified_by?: string | null;
+          provider_ref?: string | null;
+          failure_reason?: string | null;
+          gross_amount?: number | null;
         };
         Relationships: [];
       };
@@ -3084,15 +3139,15 @@ export type Database = {
           avatar_url: string | null;
           is_active: boolean;
           is_demo: boolean;
-          must_change_password: boolean;
           created_at: string;
           updated_at: string;
           archived_at: string | null;
+          must_change_password: boolean;
         };
         Insert: {
           id?: string;
           user_id?: string | null;
-          full_name: string;
+          full_name?: string;
           email?: string | null;
           phone?: string | null;
           avatar_url?: string | null;
@@ -3101,6 +3156,7 @@ export type Database = {
           created_at?: string;
           updated_at?: string;
           archived_at?: string | null;
+          must_change_password?: boolean;
         };
         Update: {
           id?: string;
@@ -3114,6 +3170,7 @@ export type Database = {
           created_at?: string;
           updated_at?: string;
           archived_at?: string | null;
+          must_change_password?: boolean;
         };
         Relationships: [];
       };
@@ -3336,7 +3393,7 @@ export type Database = {
           code: string;
           name: string;
           description?: string | null;
-          unit_of_measure: string;
+          unit_of_measure?: string;
           default_price?: number;
           taxable?: boolean;
           requires_truck?: boolean;
@@ -4016,7 +4073,7 @@ export type Database = {
           id: string;
           truck_id: string;
           job_order_id: string;
-          period: string;
+          period: unknown;
           active: boolean;
           created_at: string;
           created_by: string | null;
@@ -4025,7 +4082,7 @@ export type Database = {
           id?: string;
           truck_id: string;
           job_order_id: string;
-          period: string;
+          period: unknown;
           active?: boolean;
           created_at?: string;
           created_by?: string | null;
@@ -4034,7 +4091,7 @@ export type Database = {
           id?: string;
           truck_id?: string;
           job_order_id?: string;
-          period?: string;
+          period?: unknown;
           active?: boolean;
           created_at?: string;
           created_by?: string | null;
@@ -4509,7 +4566,6 @@ export type Database = {
       apply_customer_credit: { Args: { p_credit_id: string; p_invoice_id: string; p_amount: number; }; Returns: Json };
       apply_estimate_template: { Args: { p_estimate_id: string; p_template_id: string; }; Returns: Json };
       approve_bill: { Args: { p_bill_id: string; }; Returns: Json };
-      clear_must_change_password: { Args: {  }; Returns: undefined };
       approve_contract: { Args: { p_contract_id: string; }; Returns: Json };
       approve_estimate: { Args: { p_estimate_id: string; }; Returns: Json };
       approve_expense: { Args: { p_expense_id: string; }; Returns: Json };
@@ -4518,6 +4574,7 @@ export type Database = {
       can_see_task: { Args: { p_task_id: string; }; Returns: Json };
       cancel_job_order: { Args: { p_job_id: string; p_reason: string; }; Returns: Json };
       check_customer_duplicates: { Args: { p_phone: string; p_ghana_card: string; p_email: string; p_tin: string; p_exclude?: string; }; Returns: Json };
+      clear_must_change_password: { Args: {  }; Returns: Json };
       complete_job_order: { Args: { p_job_id: string; p_signoff_name: string; p_signature_path?: string; p_notes?: string; p_actuals?: Json; }; Returns: Json };
       compute_taxes: { Args: { p_taxable: number; }; Returns: Json };
       contract_month_figures: { Args: { p_contract_id: string; p_month: string; }; Returns: Json };
@@ -4537,7 +4594,7 @@ export type Database = {
       get_customer_overview: { Args: { p_customer_id: string; }; Returns: Json };
       get_dashboard: { Args: { p_from: string; p_to: string; p_service?: string; p_zone?: string; p_customer_type?: string; }; Returns: Json };
       get_my_jobs: { Args: { p_from?: string; p_to?: string; }; Returns: Json };
-      get_truck_availability: { Args: { p_from: string; p_to: string; p_type?: string; p_exclude_job?: string; }; Returns: Json };
+      get_truck_availability: { Args: { p_from: string; p_to: string; p_type?: string; p_exclude_job?: string; p_start?: unknown; p_end?: unknown; }; Returns: Json };
       global_search: { Args: { p_q: string; p_limit?: number; }; Returns: Json };
       has_any_role: { Args: { p_roles: string[]; }; Returns: Json };
       has_exact_role: { Args: { p_role: string; }; Returns: Json };
@@ -4548,6 +4605,7 @@ export type Database = {
       is_direct_client: { Args: {  }; Returns: Json };
       issue_credit_note: { Args: { p_invoice_id: string; p_amount: number; p_reason: string; }; Returns: Json };
       issue_invoice: { Args: { p_invoice_id: string; }; Returns: Json };
+      job_order_span: { Args: { p_job_id: string; }; Returns: Json };
       list_customer_stats: { Args: { p_ids: string[]; }; Returns: Json };
       mark_lines_cleared: { Args: { p_line_ids: string[]; p_cleared: boolean; }; Returns: Json };
       mark_notifications_read: { Args: { p_ids?: string[]; }; Returns: Json };
@@ -4585,10 +4643,12 @@ export type Database = {
       rpt_tax_summary: { Args: { p_from: string; p_to: string; }; Returns: Json };
       rpt_trial_balance: { Args: { p_as_of?: string; }; Returns: Json };
       schedule_app_jobs: { Args: {  }; Returns: Json };
+      send_test_email: { Args: { p_email: string; p_subject?: string; p_message?: string; }; Returns: Json };
       send_test_sms: { Args: { p_phone: string; p_message: string; }; Returns: Json };
       set_contract_status: { Args: { p_contract_id: string; p_status: string; p_reason: string; }; Returns: Json };
       set_quotation_status: { Args: { p_quote_id: string; p_status: string; }; Returns: Json };
       set_truck_status: { Args: { p_truck_id: string; p_status: string; p_reason?: string; p_expected_return?: string; p_note?: string; }; Returns: Json };
+      span_of: { Args: { p_from: string; p_to: string; p_start: unknown; p_end: unknown; }; Returns: Json };
       start_job_order: { Args: { p_job_id: string; p_lat?: number; p_lng?: number; }; Returns: Json };
       storage_folder_uuid: { Args: { p_name: string; p_index?: number; }; Returns: Json };
       submit_bill: { Args: { p_bill_id: string; }; Returns: Json };

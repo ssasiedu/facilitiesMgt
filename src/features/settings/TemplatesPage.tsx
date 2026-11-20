@@ -70,6 +70,8 @@ export default function TemplatesPage() {
   const [editing, setEditing] = useState<Template | null>(null);
   const [draft, setDraft] = useState({ subject: '', body: '', active: true });
   const [testOpen, setTestOpen] = useState(false);
+  const [emailTestOpen, setEmailTestOpen] = useState(false);
+  const [emailTest, setEmailTest] = useState({ email: '', message: '' });
   const [test, setTest] = useState({ phone: '', message: '' });
 
   const { data = [], isLoading } = useQuery({
@@ -112,6 +114,18 @@ export default function TemplatesPage() {
     onError: (e) => toast.error(friendlyError(e)),
   });
 
+  /* Email had no test, which left a delivery failure with nowhere to look. This goes through the
+     ordinary queue, so the provider's own refusal lands in Notifications beside everything else. */
+  const sendEmailTest = useMutation({
+    mutationFn: () => rpc<string>('send_test_email', { p_email: emailTest.email, p_message: emailTest.message }),
+    onSuccess: () => {
+      toast.success('Test queued — check Notifications in a minute for the result');
+      setEmailTestOpen(false);
+      setEmailTest({ email: '', message: '' });
+    },
+    onError: (e) => toast.error(friendlyError(e)),
+  });
+
   const open = (t: Template) => {
     setEditing(t);
     setDraft({ subject: t.subject ?? '', body: t.body, active: t.active });
@@ -125,7 +139,10 @@ export default function TemplatesPage() {
   return (
     <div>
       <PageHeader title="Settings" subtitle="The wording of every automatic text message and email"
-        actions={<Button variant="secondary" icon={<Send className="h-4 w-4" />} onClick={() => setTestOpen(true)}>Send a test SMS</Button>} />
+        actions={<>
+          <Button variant="secondary" icon={<Send className="h-4 w-4" />} onClick={() => setTestOpen(true)}>Send a test SMS</Button>
+          <Button variant="secondary" icon={<Send className="h-4 w-4" />} onClick={() => setEmailTestOpen(true)}>Send a test email</Button>
+        </>} />
       <SettingsTabs />
 
       <Card className="mt-4" title="How sending works">
@@ -234,6 +251,23 @@ export default function TemplatesPage() {
           <p className="text-xs text-stone-500">
             The test is queued like any other message and sent by the scheduled function, which proves the provider keys and
             the sender ID are working end to end.
+          </p>
+        </div>
+      </Modal>
+
+      <Modal open={emailTestOpen} onClose={() => setEmailTestOpen(false)} title="Send a test email" size="sm"
+        footer={<><Button variant="secondary" onClick={() => setEmailTestOpen(false)}>Cancel</Button>
+          <Button loading={sendEmailTest.isPending} disabled={!emailTest.email} onClick={() => sendEmailTest.mutate()}>Queue the test</Button></>}>
+        <div className="space-y-4">
+          <Input label="Email address" type="email" required value={emailTest.email} placeholder="you@example.com"
+            onChange={(e) => setEmailTest({ ...emailTest, email: e.target.value })} />
+          <Textarea label="Message" rows={3} value={emailTest.message}
+            onChange={(e) => setEmailTest({ ...emailTest, message: e.target.value })}
+            hint="Leave it empty to send a short default message" />
+          <p className="text-xs text-stone-500">
+            The test is queued like any other email. If it fails, open <strong>Notifications</strong> and read the reason on the
+            failed row — it carries the provider's own words, which is what says whether the key, the sending domain or the
+            address is at fault.
           </p>
         </div>
       </Modal>
