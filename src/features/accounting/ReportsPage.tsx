@@ -21,7 +21,7 @@ import { Spinner } from '@/components/ui/Spinner';
 import { ErrorState } from '@/components/ui/ErrorState';
 import { EmptyState } from '@/components/ui/EmptyState';
 
-type ReportKey = 'trial_balance' | 'profit_loss' | 'balance_sheet' | 'cash_flow' | 'general_ledger' | 'ap_aging' | 'tax' | 'expenses';
+type ReportKey = 'trial_balance' | 'profit_loss' | 'balance_sheet' | 'cash_flow' | 'general_ledger' | 'ap_aging' | 'revenue' | 'tax' | 'expenses';
 
 // These match the rpt_* function signatures in migration 0015 exactly.
 interface TrialRow { account_id: string; code: string; name: string; account_type: string; debit: number; credit: number }
@@ -32,6 +32,13 @@ interface LedgerRow { entry_id: string; line_id: string; entry_no: string | null
 interface ApRow { supplier_id: string; supplier_name: string; current_amt: number; d1_30: number; d31_60: number; d61_90: number; d90_plus: number; total: number }
 interface TaxRow { tax_name: string; account_code: string; collected: number; reversed: number; net: number }
 interface ExpenseRow { code: string; name: string; subtype: string | null; amount: number }
+interface TaxDetailRow {
+  doc_type: string; doc_no: string | null; doc_date: string; customer_name: string | null;
+  customer_code: string | null; customer_tin: string | null; tax_name: string; rate: number | null;
+  taxable_amount: number; tax_amount: number; doc_total: number;
+}
+interface RevenueRow { bucket: string; account_code: string; account_name: string; subtype: string | null; earned: number }
+interface RevenueServiceRow { service_name: string; invoices: number; quantity: number; net: number; tax: number; gross: number }
 
 /** The financial reports from spec 4.10, each exportable to Excel and PDF. */
 export default function ReportsPage() {
@@ -43,8 +50,10 @@ export default function ReportsPage() {
   const [plGroup, setPlGroup] = useState('month');
   const [ledgerAccount, setLedgerAccount] = useState('');
 
-  const q = <T,>(key: ReportKey, fn: () => Promise<T>, enabled = true) =>
-    useQuery({ queryKey: ['report', key, range.from, range.to, plGroup, ledgerAccount], enabled: tab === key && enabled, queryFn: fn });
+  /* key decides which tab the query belongs to; part separates two queries that feed the same
+     tab, so they get their own cache entry instead of overwriting one another. */
+  const q = <T,>(key: ReportKey, fn: () => Promise<T>, enabled = true, part = '') =>
+    useQuery({ queryKey: ['report', key, part, range.from, range.to, plGroup, ledgerAccount], enabled: tab === key && enabled, queryFn: fn });
 
   const trial = q<TrialRow[]>('trial_balance', () => rpc('rpt_trial_balance', { p_as_of: range.to }));
   const pl = q<PlRow[]>('profit_loss', () => rpc('rpt_profit_and_loss', { p_from: range.from, p_to: range.to, p_group: plGroup }));
@@ -54,20 +63,32 @@ export default function ReportsPage() {
   const ap = q<ApRow[]>('ap_aging', () => rpc('rpt_ap_aging', { p_as_of: range.to }));
   const tax = q<TaxRow[]>('tax', () => rpc('rpt_tax_summary', { p_from: range.from, p_to: range.to }));
   const expenses = q<ExpenseRow[]>('expenses', () => rpc('rpt_expenses_by_category', { p_from: range.from, p_to: range.to }));
+  // The working behind the tax summary, loaded with it so the figure can be checked on the spot.
+  const taxDetail = q<TaxDetailRow[]>('tax', () => rpc('rpt_tax_detail', { p_from: range.from, p_to: range.to }), true, 'detail');
+  const revenue = q<RevenueRow[]>('revenue', () => rpc('rpt_revenue', { p_from: range.from, p_to: range.to, p_group: plGroup }));
+  const revenueByService = q<RevenueServiceRow[]>('revenue', () => rpc('rpt_revenue_by_service', { p_from: range.from, p_to: range.to }), true, 'by-service');
 
-  const active = { trial_balance: trial, profit_loss: pl, balance_sheet: balance, cash_flow: cash, general_ledger: ledger, ap_aging: ap, tax, expenses }[tab];
+  const active = { trial_balance: trial, profit_loss: pl, balance_sheet: balance, cash_flow: cash, general_ledger: ledger, ap_aging: ap, revenue, tax, expenses }[tab];
 
   const titles: Record<ReportKey, string> = {
     trial_balance: 'Trial balance', profit_loss: 'Profit and loss', balance_sheet: 'Balance sheet',
     cash_flow: 'Cash flow', general_ledger: 'General ledger', ap_aging: 'Payables aging',
-    tax: 'Tax summary', expenses: 'Expenses by category',
+    revenue: 'Revenue', tax: 'Tax summary', expenses: 'Expenses by category',
   };
 
   const asAt = ['trial_balance', 'balance_sheet', 'ap_aging'].includes(tab);
   const subtitle = asAt ? `As at ${formatDate(range.to)}` : `${formatDate(range.from)} – ${formatDate(range.to)}`;
 
   // Per-report export shapes.
-  const exportSpec = (): { columns: ReportColumn[]; rows: Record<string, string | number | null>[]; excel: ExportColumn<Record<string, unknown>>[] } | null => {
+  /* extra is a second table that belongs with the first — the tax summary's working, for
+     instance. It becomes another section in the PDF and another sheet in the workbook. */
+  interface ExportTable {
+    title?: string;
+    columns: ReportColumn[];
+    rows: Record<string, string | number | null>[];
+    excel: ExportColumn<Record<string, unknown>>[];
+  }
+  const exportSpec = (): (ExportTable & { extra?: ExportTable }) | null => {
     const money = (n: unknown) => formatGHS(Number(n ?? 0));
     switch (tab) {
       case 'trial_balance': {
@@ -167,6 +188,52 @@ export default function ReportsPage() {
             { header: 'Collected', value: (r) => String(r.collected) }, { header: 'Reversed', value: (r) => String(r.reversed) },
             { header: 'Net payable', value: (r) => String(r.net) },
           ],
+          /* The detail goes out with the summary, since the whole point of asking for customer
+             and invoice number was to be able to hand the working to someone. */
+          extra: {
+            title: 'Documents behind the figures',
+            rows: (taxDetail.data ?? []).map((r) => ({
+              date: formatDate(r.doc_date), type: r.doc_type, doc: r.doc_no ?? '',
+              customer: r.customer_name ?? '', customer_code: r.customer_code ?? '', tin: r.customer_tin ?? '',
+              tax: r.tax_name, rate: r.rate === null ? '' : `${Number(r.rate)}%`,
+              taxable: money(r.taxable_amount), amount: money(r.tax_amount),
+            })),
+            columns: [{ label: 'Date', width: '10%', key: 'date' }, { label: 'Type', width: '10%', key: 'type' },
+              { label: 'Document', width: '13%', key: 'doc' }, { label: 'Customer', width: '22%', key: 'customer' },
+              { label: 'TIN', width: '12%', key: 'tin' }, { label: 'Tax', width: '11%', key: 'tax' },
+              { label: 'Rate', width: '7%', align: 'right', key: 'rate' },
+              { label: 'Taxable', width: '7%', align: 'right', key: 'taxable' },
+              { label: 'Tax', width: '8%', align: 'right', key: 'amount' }],
+            excel: [
+              { header: 'Date', value: (r: Record<string, unknown>) => String(r.date) },
+              { header: 'Type', value: (r: Record<string, unknown>) => String(r.type) },
+              { header: 'Document', value: (r: Record<string, unknown>) => String(r.doc) },
+              { header: 'Customer', value: (r: Record<string, unknown>) => String(r.customer) },
+              { header: 'Customer code', value: (r: Record<string, unknown>) => String(r.customer_code) },
+              { header: 'TIN', value: (r: Record<string, unknown>) => String(r.tin) },
+              { header: 'Tax', value: (r: Record<string, unknown>) => String(r.tax) },
+              { header: 'Rate', value: (r: Record<string, unknown>) => String(r.rate) },
+              { header: 'Taxable', value: (r: Record<string, unknown>) => String(r.taxable) },
+              { header: 'Tax amount', value: (r: Record<string, unknown>) => String(r.amount) },
+            ],
+          },
+        };
+      }
+      case 'revenue': {
+        const rows = (revenue.data ?? []).map((r) => ({
+          bucket: r.bucket, code: r.account_code, name: r.account_name,
+          kind: r.subtype ? humanize(r.subtype) : '', earned: money(r.earned),
+        }));
+        return {
+          columns: [{ label: 'Period', width: '16%', key: 'bucket' }, { label: 'Account', width: '14%', key: 'code' },
+            { label: 'Income', width: '34%', key: 'name' }, { label: 'Kind', width: '18%', key: 'kind' },
+            { label: 'Earned', width: '18%', align: 'right', key: 'earned' }],
+          rows,
+          excel: [
+            { header: 'Period', value: (r) => String(r.bucket) }, { header: 'Account', value: (r) => String(r.code) },
+            { header: 'Income', value: (r) => String(r.name) }, { header: 'Kind', value: (r) => String(r.kind) },
+            { header: 'Earned', value: (r) => String(r.earned) },
+          ],
         };
       }
       case 'expenses': {
@@ -195,14 +262,22 @@ export default function ReportsPage() {
     const spec = exportSpec();
     if (!spec) return;
     exportXlsx(spec.rows as Record<string, unknown>[], spec.excel, `${tab}-${range.to}`, titles[tab].slice(0, 31));
+    if (spec.extra?.rows.length) {
+      exportXlsx(spec.extra.rows as Record<string, unknown>[], spec.extra.excel,
+        `${tab}-detail-${range.to}`, (spec.extra.title ?? 'Detail').slice(0, 31));
+    }
   };
 
   const exportPdf = () => {
     const spec = exportSpec();
     if (!spec || !settings) return;
+    const sections: { title?: string; columns: ReportColumn[]; rows: Record<string, string | number | null>[] }[] =
+      [{ columns: spec.columns, rows: spec.rows }];
+    if (spec.extra?.rows.length) {
+      sections.push({ title: spec.extra.title, columns: spec.extra.columns, rows: spec.extra.rows });
+    }
     void downloadPdf(
-      <ReportPdf company={companyFromSettings(settings)} title={titles[tab]} subtitle={subtitle}
-        sections={[{ columns: spec.columns, rows: spec.rows }]} />,
+      <ReportPdf company={companyFromSettings(settings)} title={titles[tab]} subtitle={subtitle} sections={sections} />,
       `${tab}-${range.to}`,
     );
   };
@@ -257,6 +332,7 @@ export default function ReportsPage() {
         { value: 'cash_flow', label: 'Cash flow' },
         { value: 'general_ledger', label: 'General ledger' },
         { value: 'ap_aging', label: 'Payables aging' },
+        { value: 'revenue', label: 'Revenue' },
         { value: 'tax', label: 'Tax summary' },
         { value: 'expenses', label: 'Expenses' },
       ]} value={tab} onChange={setTab} />
@@ -505,6 +581,152 @@ export default function ReportsPage() {
               </p>
             </Card>
           ) : <EmptyState title="No tax charged in this period" message="Taxes are inactive until an admin sets the current rates." />
+        ) : null}
+
+        {/* The working behind the summary above: which customer, on which invoice, at what rate.
+            The summary is the figure that gets filed; this is what proves it. */}
+        {tab === 'tax' && taxDetail.data?.length ? (
+          <Card className="mt-4" bodyClassName="p-0" title="Every document behind those figures">
+            <div className="overflow-x-auto">
+              <table className="min-w-full text-sm">
+                <thead className="bg-stone-50 text-left text-xs uppercase tracking-wide text-stone-500">
+                  <tr>
+                    <th scope="col" className="px-3 py-2 font-medium">Date</th>
+                    <th scope="col" className="px-3 py-2 font-medium">Document</th>
+                    <th scope="col" className="px-3 py-2 font-medium">Customer</th>
+                    <th scope="col" className="px-3 py-2 font-medium">TIN</th>
+                    <th scope="col" className="px-3 py-2 font-medium">Tax</th>
+                    <th scope="col" className="px-3 py-2 text-right font-medium">Rate</th>
+                    <th scope="col" className="px-3 py-2 text-right font-medium">Taxable</th>
+                    <th scope="col" className="px-3 py-2 text-right font-medium">Tax</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-stone-100">
+                  {taxDetail.data.map((r, i) => (
+                    <tr key={i} className={Number(r.tax_amount) < 0 ? 'text-red-800' : undefined}>
+                      <td className="whitespace-nowrap px-3 py-2">{formatDate(r.doc_date)}</td>
+                      <td className="px-3 py-2">
+                        <span className="font-mono text-xs">{r.doc_no ?? '—'}</span>
+                        <span className="ml-1 text-xs text-stone-500">{r.doc_type}</span>
+                      </td>
+                      <td className="px-3 py-2">
+                        {r.customer_name ?? '—'}
+                        {r.customer_code ? <span className="ml-1 font-mono text-xs text-stone-500">{r.customer_code}</span> : null}
+                      </td>
+                      <td className="px-3 py-2 font-mono text-xs">{r.customer_tin ?? '—'}</td>
+                      <td className="px-3 py-2">{r.tax_name}</td>
+                      <td className="px-3 py-2 text-right tabular-nums">{r.rate === null ? '—' : `${Number(r.rate)}%`}</td>
+                      <td className="px-3 py-2 text-right tabular-nums">{formatGHS(r.taxable_amount)}</td>
+                      <td className="px-3 py-2 text-right font-medium tabular-nums">{formatGHS(r.tax_amount)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot className="border-t-2 border-stone-300 bg-stone-50 font-semibold">
+                  <tr>
+                    <td className="px-3 py-2" colSpan={6}>Total</td>
+                    <td className="px-3 py-2 text-right tabular-nums">
+                      {formatGHS(taxDetail.data.reduce((t, r) => t + Number(r.taxable_amount), 0))}
+                    </td>
+                    <td className="px-3 py-2 text-right tabular-nums">
+                      {formatGHS(taxDetail.data.reduce((t, r) => t + Number(r.tax_amount), 0))}
+                    </td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+            <p className="p-3 text-xs text-stone-500">
+              Credit notes appear as negatives, which is why this total agrees with the net payable above rather than
+              with the amount collected.
+            </p>
+          </Card>
+        ) : null}
+
+        {/* ---------- Revenue only: what was earned, and on what ---------- */}
+        {tab === 'revenue' && revenue.data ? (
+          revenue.data.length ? (
+            <div className="space-y-4">
+              <Card bodyClassName="p-0" title="Earned by period and income account">
+                <div className="overflow-x-auto">
+                  <table className="min-w-full text-sm">
+                    <thead className="bg-stone-50 text-left text-xs uppercase tracking-wide text-stone-500">
+                      <tr>
+                        <th scope="col" className="px-3 py-2 font-medium">Period</th>
+                        <th scope="col" className="px-3 py-2 font-medium">Account</th>
+                        <th scope="col" className="px-3 py-2 font-medium">Income</th>
+                        <th scope="col" className="px-3 py-2 font-medium">Kind</th>
+                        <th scope="col" className="px-3 py-2 text-right font-medium">Earned</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-stone-100">
+                      {revenue.data.map((r, i) => (
+                        <tr key={i}>
+                          <td className="whitespace-nowrap px-3 py-2">{r.bucket}</td>
+                          <td className="px-3 py-2 font-mono text-xs">{r.account_code}</td>
+                          <td className="px-3 py-2">{r.account_name}</td>
+                          <td className="px-3 py-2 text-stone-600">{r.subtype ? humanize(r.subtype) : '—'}</td>
+                          <td className="px-3 py-2 text-right font-medium tabular-nums">{formatGHS(r.earned)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot className="border-t-2 border-stone-300 bg-stone-50 font-semibold">
+                      <tr>
+                        <td className="px-3 py-2" colSpan={4}>Total earned</td>
+                        <td className="px-3 py-2 text-right tabular-nums">
+                          {formatGHS(revenue.data.reduce((t, r) => t + Number(r.earned), 0))}
+                        </td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+                <p className="p-3 text-xs text-stone-500">
+                  Taken from posted entries on income accounts, so this agrees with the books: work invoiced but not
+                  yet recognised is not counted as earned, and a reversal reduces the figure. Tax is not income and
+                  does not appear — it is in the Tax summary.
+                </p>
+              </Card>
+
+              {revenueByService.data?.length ? (
+                <Card bodyClassName="p-0" title="Earned on each service">
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full text-sm">
+                      <thead className="bg-stone-50 text-left text-xs uppercase tracking-wide text-stone-500">
+                        <tr>
+                          <th scope="col" className="px-3 py-2 font-medium">Service</th>
+                          <th scope="col" className="px-3 py-2 text-right font-medium">Invoices</th>
+                          <th scope="col" className="px-3 py-2 text-right font-medium">Net</th>
+                          <th scope="col" className="px-3 py-2 text-right font-medium">Tax</th>
+                          <th scope="col" className="px-3 py-2 text-right font-medium">Invoiced</th>
+                          <th scope="col" className="px-3 py-2 text-right font-medium">Share</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-stone-100">
+                        {revenueByService.data.map((r, i) => {
+                          const totalNet = revenueByService.data!.reduce((t, x) => t + Number(x.net), 0);
+                          return (
+                            <tr key={i}>
+                              <td className="px-3 py-2 font-medium">{r.service_name}</td>
+                              <td className="px-3 py-2 text-right tabular-nums">{r.invoices}</td>
+                              <td className="px-3 py-2 text-right tabular-nums">{formatGHS(r.net)}</td>
+                              <td className="px-3 py-2 text-right tabular-nums">{Number(r.tax) ? formatGHS(r.tax) : '—'}</td>
+                              <td className="px-3 py-2 text-right tabular-nums">{formatGHS(r.gross)}</td>
+                              <td className="px-3 py-2 text-right tabular-nums">
+                                {totalNet ? `${((Number(r.net) / totalNet) * 100).toFixed(1)}%` : '—'}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                  <p className="p-3 text-xs text-stone-500">
+                    From invoice lines rather than the ledger, because accounts are not kept per service. Totals here
+                    count what was invoiced in the period, so they can differ from the earned figure above where
+                    revenue is deferred.
+                  </p>
+                </Card>
+              ) : null}
+            </div>
+          ) : <EmptyState title="Nothing earned in this period" message="No income was posted between these dates." />
         ) : null}
 
         {tab === 'expenses' && expenses.data ? (

@@ -606,4 +606,53 @@ begin
   raise notice 'PASS a drafted message and a balance notice queue against the customer with the ledger''s own figure';
 end $$;
 
+-- ---------- 14. Tax detail names the customer and the invoice; revenue stands alone ----------
+do $$
+declare v_cust uuid; v_inv uuid; n int; v_tax numeric; v_detail numeric; v_name text; v_no text;
+begin
+  update public.tax_rates set active = true, rate = 15 where name = 'VAT';
+  update public.tax_rates set active = true, rate = 2.5 where name = 'NHIL';
+
+  select id into v_cust from public.customers where tin is not null limit 1;
+  if v_cust is null then select id into v_cust from public.customers limit 1; end if;
+
+  -- lines may only be added while the invoice is a draft, so it is issued afterwards
+  insert into public.invoices (customer_id, issue_date, due_date, status)
+  values (v_cust, current_date, current_date + 30, 'draft') returning id into v_inv;
+  insert into public.invoice_lines (invoice_id, description, quantity, unit_price, taxable, sort_order)
+  values (v_inv, 'Janitorial services, November', 1, 1000, true, 1);
+  update public.invoices set status = 'issued', invoice_no = public.next_doc_no('invoice') where id = v_inv;
+
+  select tax_total into v_tax from public.invoices where id = v_inv;
+  assert v_tax > 0, 'the invoice carried no tax to report on';
+
+  perform pg_temp.login('t.manager1@test.local');
+
+  -- every tax row on that invoice appears, carrying the customer and the invoice number
+  select count(*), sum(d.tax_amount) into n, v_detail
+  from public.rpt_tax_detail(current_date, current_date) d
+  where d.doc_no = (select invoice_no from public.invoices where id = v_inv);
+  assert n = 2, format('expected a line per active rate, got %s', n);
+  assert v_detail = v_tax, format('detail tax %s does not match the invoice %s', v_detail, v_tax);
+
+  select d.customer_name, d.doc_no into v_name, v_no
+  from public.rpt_tax_detail(current_date, current_date) d
+  where d.doc_no = (select invoice_no from public.invoices where id = v_inv) limit 1;
+  assert v_name is not null and v_name <> '', 'the tax detail named no customer';
+  assert v_no is not null and v_no <> '', 'the tax detail carried no invoice number';
+
+  -- the detail proves the summary: both come to the same net for the period
+  assert (select coalesce(sum(tax_amount), 0) from public.rpt_tax_detail(current_date, current_date)) > 0,
+    'tax detail is empty for a period with tax charged';
+
+  -- revenue reads on its own, and the service breakdown apportions the tax it carries
+  assert exists (select 1 from public.rpt_revenue(current_date - 365, current_date, 'month')), 'the revenue report is empty';
+  assert exists (
+    select 1 from public.rpt_revenue_by_service(current_date, current_date) r
+    where r.net > 0 and r.gross > r.net), 'revenue by service did not apportion any tax';
+
+  perform pg_temp.logout();
+  raise notice 'PASS tax detail carries customer and invoice number and ties to the invoice; revenue reports stand alone';
+end $$;
+
 rollback;

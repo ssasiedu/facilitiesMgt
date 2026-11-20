@@ -4725,6 +4725,9 @@ export type Database = {
       rpt_fleet: { Args: { p_from: string; p_to: string; }; Returns: Json };
       rpt_general_ledger: { Args: { p_account_id: string; p_from: string; p_to: string; }; Returns: Json };
       rpt_profit_and_loss: { Args: { p_from: string; p_to: string; p_group?: string; }; Returns: Json };
+      rpt_revenue: { Args: { p_from: string; p_to: string; p_group?: string; }; Returns: Json };
+      rpt_revenue_by_service: { Args: { p_from: string; p_to: string; }; Returns: Json };
+      rpt_tax_detail: { Args: { p_from: string; p_to: string; }; Returns: Json };
       rpt_tax_summary: { Args: { p_from: string; p_to: string; }; Returns: Json };
       rpt_trial_balance: { Args: { p_as_of?: string; }; Returns: Json };
       schedule_app_jobs: { Args: {  }; Returns: Json };
