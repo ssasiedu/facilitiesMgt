@@ -97,7 +97,9 @@ export interface SurveyAnswer {
 export const getPublicInvoice = (token: string) => callFunction<PublicInvoiceData>('public-document', { method: 'GET', query: { type: 'invoice', token } });
 export const getPublicReceipt = (token: string) => callFunction<PublicReceiptData>('public-document', { method: 'GET', query: { type: 'receipt', token } });
 export const getPublicStatement = (token: string) => callFunction<PublicStatementData>('public-document', { method: 'GET', query: { type: 'statement', token } });
-export const startInvoicePayment = (token: string) => callFunction<{ url: string }>('public-document', { method: 'POST', body: { action: 'pay', token } });
+/** amount is left out to pay the whole balance; the server checks whatever is passed. */
+export const startInvoicePayment = (token: string, amount?: number) =>
+  callFunction<{ url: string }>('public-document', { method: 'POST', body: { action: 'pay', token, amount } });
 export const getPublicSurvey = (token: string) => callFunction<PublicSurveyData>('public-survey', { method: 'GET', query: { token } });
 export const submitPublicSurvey = (token: string, answers: SurveyAnswer[]) =>
   callFunction<{ ok: boolean; low: boolean; thank_you: string | null }>('public-survey', { method: 'POST', body: { token, answers } });

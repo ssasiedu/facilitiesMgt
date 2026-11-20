@@ -1,12 +1,18 @@
 // public-document: invoice, receipt and statement data by unguessable token (no login).
 // The browser renders the page and builds the PDF from this data.
 //   GET  ?type=invoice|receipt|statement&token=...
-//   POST { action: "pay", token }   -> { url } checkout link (only when online payments are enabled)
+//   POST { action: "pay", token, amount? } -> { url } checkout link (only when online payments
+//        are enabled). amount is optional and lets a customer part-pay; left out, the whole
+//        outstanding balance is charged.
 import { adminClient, getSettings, publicCompany } from "../_shared/admin.ts";
 import { errorResponse, json, preflight } from "../_shared/cors.ts";
 import { hubtelCheckout, paystack } from "../_shared/payments.ts";
 
 const TOKEN = /^[a-f0-9]{24,64}$/;
+
+/* Mobile money will not carry a few pesewas, and a token amount costs more in gateway fees than
+   it collects. A whole cedi is the floor. */
+const MIN_PAYMENT = 1;
 
 async function invoiceByToken(token: string) {
   const admin = adminClient();
@@ -67,11 +73,24 @@ Deno.serve(async (req) => {
   }
 
   if (req.method === "POST") {
-    const body = await req.json().catch(() => ({})) as { action?: string; token?: string };
+    const body = await req.json().catch(() => ({})) as { action?: string; token?: string; amount?: unknown };
     if (body.action !== "pay" || !TOKEN.test(body.token ?? "")) return errorResponse("Invalid request");
     if (!settings.online_payments_enabled) return errorResponse("Online payment is not enabled", 403);
     const invoice = await invoiceByToken(body.token!);
     if (!invoice || Number(invoice.balance) <= 0) return errorResponse("Nothing to pay on this invoice", 400);
+
+    /* A customer may pay part of an invoice. The amount is checked here rather than trusted from
+       the browser: anyone holding the link can post to this endpoint, and a session opened for
+       more than is owed, or for a fraction of a pesewa, would reconcile against nothing. */
+    const balance = Math.round(Number(invoice.balance) * 100) / 100;
+    let charge = balance;
+    if (body.amount !== undefined && body.amount !== null && body.amount !== "") {
+      const asked = Math.round(Number(body.amount) * 100) / 100;
+      if (!Number.isFinite(asked) || asked <= 0) return errorResponse("Enter the amount you want to pay", 400);
+      if (asked > balance) return errorResponse(`The most that can be paid on this invoice is GH\u20B5 ${balance.toFixed(2)}`, 400);
+      if (asked < MIN_PAYMENT) return errorResponse(`The smallest payment is GH\u20B5 ${MIN_PAYMENT.toFixed(2)}`, 400);
+      charge = asked;
+    }
     // Hubtel caps clientReference at 32 characters and refuses one it has seen before.
     const reference = "P" + crypto.randomUUID().replace(/-/g, "").slice(0, 20) + Date.now().toString(36);
     /* Hubtel does not sign its callback, so the callback URL carries a secret of ours instead.
@@ -84,14 +103,17 @@ Deno.serve(async (req) => {
 
     const { error } = await admin.from("payment_sessions").insert({
       reference, provider: settings.payment_provider, invoice_id: invoice.id,
-      amount: invoice.balance, callback_token: callbackToken,
+      amount: charge, callback_token: callbackToken,
     });
     if (error) return errorResponse(error.message, 500);
 
     const request = {
-      amount: Number(invoice.balance), email: invoice.customer?.email ?? invoice.customer?.company_email ?? null,
+      amount: charge, email: invoice.customer?.email ?? invoice.customer?.company_email ?? null,
       phone: invoice.customer?.phone ?? invoice.customer?.company_phone ?? null, reference,
-      description: `${settings.company_name} invoice ${invoice.invoice_no}`, callbackUrl: `${appUrl}/p/invoice/${body.token}?paid=1`, webhookUrl: fnUrl,
+      description: charge < balance
+        ? `${settings.company_name} invoice ${invoice.invoice_no} (part payment)`
+        : `${settings.company_name} invoice ${invoice.invoice_no}`,
+      callbackUrl: `${appUrl}/p/invoice/${body.token}?paid=1`, webhookUrl: fnUrl,
       metadata: {
         invoice_no: invoice.invoice_no, reference,
         customer_name: invoice.customer?.display_name ?? null,
