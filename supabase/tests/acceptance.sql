@@ -655,4 +655,58 @@ begin
   raise notice 'PASS tax detail carries customer and invoice number and ties to the invoice; revenue reports stand alone';
 end $$;
 
+-- ---------- 15. The by-invoice statement carries each invoice's own balance ----------
+do $$
+declare
+  v_cust uuid; v_inv uuid; v_no text; v_pay1 jsonb; v_pay2 jsonb;
+  v_after numeric; v_bal numeric; n int;
+begin
+  select id into v_cust from public.customers limit 1;
+
+  insert into public.invoices (customer_id, issue_date, due_date, status)
+  values (v_cust, current_date - 20, current_date + 10, 'draft') returning id into v_inv;
+  insert into public.invoice_lines (invoice_id, description, quantity, unit_price, taxable, sort_order)
+  values (v_inv, 'Cesspit emptying, three trips', 3, 500, false, 1);
+  update public.invoices set status = 'issued', invoice_no = public.next_doc_no('invoice') where id = v_inv;
+  select invoice_no, balance into v_no, v_bal from public.invoices where id = v_inv;
+  assert v_bal = 1500, format('invoice should owe 1500, owes %s', v_bal);
+
+  -- recording a payment is the accountant's job
+  perform pg_temp.login('t.acc1@test.local');
+
+  -- two part payments against the one invoice
+  v_pay1 := public.record_payment(v_cust, 400, 'mtn_momo', current_date - 15, 'First part', null,
+    jsonb_build_array(jsonb_build_object('invoice_id', v_inv, 'amount', 400)));
+  v_pay2 := public.record_payment(v_cust, 350, 'cash', current_date - 10, 'Second part', null,
+    jsonb_build_array(jsonb_build_object('invoice_id', v_inv, 'amount', 350)));
+
+  perform pg_temp.logout();
+  perform pg_temp.login('t.manager1@test.local');
+
+  -- the running balance must step down 1500 -> 1100 -> 750, never the account total
+  select count(*) into n from public.rpt_customer_statement_by_invoice(v_cust, current_date - 30, current_date)
+  where invoice_no = v_no;
+  assert n = 3, format('expected the invoice and its two payments, got %s rows', n);
+
+  select balance_after into v_after from public.rpt_customer_statement_by_invoice(v_cust, current_date - 30, current_date)
+  where invoice_no = v_no and line_no = 1;
+  assert v_after = 1100, format('after the first part payment the invoice should owe 1100, shows %s', v_after);
+
+  select balance_after into v_after from public.rpt_customer_statement_by_invoice(v_cust, current_date - 30, current_date)
+  where invoice_no = v_no and line_no = 2;
+  assert v_after = 750, format('after the second part payment the invoice should owe 750, shows %s', v_after);
+
+  -- the last line must agree with the invoice's own balance, or the statement is lying
+  select i.balance into v_bal from public.invoices i where i.id = v_inv;
+  assert v_after = v_bal, format('statement says %s left, the invoice says %s', v_after, v_bal);
+
+  -- an invoice raised before the window still shows while anything is owed on it
+  assert exists (
+    select 1 from public.rpt_customer_statement_by_invoice(v_cust, current_date - 1, current_date)
+    where invoice_no = v_no), 'an unpaid older invoice dropped out of the period';
+
+  perform pg_temp.logout();
+  raise notice 'PASS the by-invoice statement steps each invoice down its own balance and ties to the invoice';
+end $$;
+
 rollback;

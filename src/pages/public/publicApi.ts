@@ -76,7 +76,9 @@ export interface StatementLine {
 
 export interface PublicStatementData {
   company: CompanyInfo;
-  statement: { from: string; to: string; customer: PublicCustomer; rows: StatementLine[] };
+  /* format says which statement the link was created for. rows carry the shape that format
+     returns: StatementLine[] for the account statement, StatementByInvoiceRow[] for by-invoice. */
+  statement: { from: string; to: string; format?: 'account' | 'by_invoice'; customer: PublicCustomer; rows: StatementLine[] };
 }
 
 export interface SurveyQuestion {

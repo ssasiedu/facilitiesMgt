@@ -62,12 +62,16 @@ Deno.serve(async (req) => {
       const { data: link } = await admin.from("public_links").select("customer_id, params, expires_at").eq("token", token).eq("doc_type", "statement").maybeSingle();
       if (!link || new Date(link.expires_at) < new Date()) return errorResponse("This statement link has expired", 404);
       const from = String(link.params.from); const to = String(link.params.to);
+      /* A link created before the format was stored reads as the account statement, which is
+         what it was sent as. */
+      const format = link.params.format === "by_invoice" ? "by_invoice" : "account";
+      const fn = format === "by_invoice" ? "rpt_customer_statement_by_invoice" : "rpt_customer_statement";
       const [rows, customer] = await Promise.all([
-        admin.rpc("rpt_customer_statement", { p_customer_id: link.customer_id, p_from: from, p_to: to }),
+        admin.rpc(fn, { p_customer_id: link.customer_id, p_from: from, p_to: to }),
         admin.from("customers").select("display_name, customer_code, phone, company_phone, email, residential_address, digital_address").eq("id", link.customer_id).single(),
       ]);
       if (rows.error) return errorResponse(rows.error.message, 500);
-      return json({ company, statement: { from, to, customer: customer.data, rows: rows.data } });
+      return json({ company, statement: { from, to, format, customer: customer.data, rows: rows.data } });
     }
     return errorResponse("Unknown document type", 404);
   }

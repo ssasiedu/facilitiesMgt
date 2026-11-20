@@ -4667,7 +4667,7 @@ export type Database = {
       convert_lead_to_customer: { Args: { p_lead_id: string; }; Returns: Json };
       convert_task_to_lead: { Args: { p_task_id: string; }; Returns: Json };
       create_quotation: { Args: { p_estimate_id: string; p_valid_days?: number; p_terms?: string; }; Returns: Json };
-      create_statement_link: { Args: { p_customer_id: string; p_from: string; p_to: string; }; Returns: Json };
+      create_statement_link: { Args: { p_customer_id: string; p_from: string; p_to: string; p_format?: string; }; Returns: Json };
       cron_expr: { Args: { p_hhmm: string; }; Returns: Json };
       current_profile_id: { Args: {  }; Returns: Json };
       date_text: { Args: { p: string; }; Returns: Json };
@@ -4721,6 +4721,7 @@ export type Database = {
       rpt_balance_sheet: { Args: { p_as_of?: string; }; Returns: Json };
       rpt_cash_flow: { Args: { p_from: string; p_to: string; }; Returns: Json };
       rpt_customer_statement: { Args: { p_customer_id: string; p_from: string; p_to: string; }; Returns: Json };
+      rpt_customer_statement_by_invoice: { Args: { p_customer_id: string; p_from: string; p_to: string; }; Returns: Json };
       rpt_expenses_by_category: { Args: { p_from: string; p_to: string; }; Returns: Json };
       rpt_fleet: { Args: { p_from: string; p_to: string; }; Returns: Json };
       rpt_general_ledger: { Args: { p_account_id: string; p_from: string; p_to: string; }; Returns: Json };
