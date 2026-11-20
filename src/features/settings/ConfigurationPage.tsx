@@ -19,6 +19,7 @@ import { Checkbox } from '@/components/ui/Checkbox';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { Spinner } from '@/components/ui/Spinner';
 import { SettingsTabs } from './SettingsTabs';
+import { ListOptionsCard } from './ListOptionsCard';
 import type { Tables } from '@/types/database';
 
 type Sequence = Tables<'document_sequences'>;
@@ -293,6 +294,14 @@ export default function ConfigurationPage() {
           </div>
         </Card>
       ) : null}
+
+      <ListOptionsCard category="customer_sector" title="Customer sectors"
+        description="The sectors offered when adding or editing a customer. Keeping them on a list rather than typed in each time is what lets the sector reports group properly."
+        addLabel="Add a sector" />
+
+      <ListOptionsCard category="payment_terms" title="Payment terms"
+        description="The terms offered on a customer, a quotation and an invoice. The day count is what the invoice due date is worked out from."
+        numericLabel="Days" numericHint="0 means due on receipt" allowDefault addLabel="Add a term" />
 
       <ConfirmDialog open={lockConfirm !== null} onClose={() => setLockConfirm(null)} title="Lock the books?"
         message={`Nothing dated on or before ${lockConfirm ? formatDate(lockConfirm) : ''} can be posted, edited or reversed after this. Only a Super Admin can lift the lock.`}

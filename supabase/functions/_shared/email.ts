@@ -26,14 +26,28 @@ export function textToHtml(text: string, brand = "#0F766E", company = ""): strin
 async function sendResend(msg: EmailMessage): Promise<SendResult> {
   const key = Deno.env.get("RESEND_API_KEY");
   const from = Deno.env.get("EMAIL_FROM");
-  if (!key || !from) return { ok: false, raw: null, error: "RESEND_API_KEY / EMAIL_FROM not set" };
+  if (!key) return { ok: false, raw: null, error: "RESEND_API_KEY is not set in the function secrets" };
+  if (!from) return { ok: false, raw: null, error: "EMAIL_FROM is not set in the function secrets" };
   const res = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
     body: JSON.stringify({ from, to: [msg.to], subject: msg.subject, text: msg.text, html: msg.html }),
   });
-  const raw = await res.json().catch(() => null) as Record<string, unknown> | null;
-  return { ok: res.ok, messageId: raw?.id as string | undefined, raw, error: res.ok ? undefined : `Resend ${res.status}` };
+  /* Resend explains its refusals in the body — an unverified sending domain, a key for the wrong
+     account, a recipient its test mode will not deliver to. Reporting only the status code hides
+     exactly the sentence that would tell you what to change. */
+  const text = await res.text().catch(() => "");
+  let raw: Record<string, unknown> | null = null;
+  try { raw = text ? JSON.parse(text) as Record<string, unknown> : null; } catch { raw = null; }
+  if (res.ok) return { ok: true, messageId: raw?.id as string | undefined, raw };
+
+  const detail = (raw?.message as string | undefined)
+    ?? (raw?.error as string | undefined)
+    ?? (text ? text.slice(0, 300) : "no reason given");
+  const hint = res.status === 403 && /domain|verif/i.test(detail)
+    ? ` — the domain in EMAIL_FROM (${from}) must be verified in Resend before it will send to anyone else`
+    : "";
+  return { ok: false, messageId: undefined, raw, error: `Resend ${res.status}: ${detail}${hint}` };
 }
 
 async function sendSmtp(msg: EmailMessage): Promise<SendResult> {
@@ -51,7 +65,7 @@ async function sendSmtp(msg: EmailMessage): Promise<SendResult> {
     await client.send({ from: Deno.env.get("EMAIL_FROM") ?? Deno.env.get("SMTP_USER") ?? "", to: msg.to, subject: msg.subject, content: msg.text, html: msg.html });
     return { ok: true, raw: { smtp: "sent" } };
   } catch (e) {
-    return { ok: false, raw: null, error: `SMTP: ${(e as Error).message}` };
+    return { ok: false, raw: null, error: `SMTP ${host}:${Deno.env.get("SMTP_PORT") ?? 465} — ${(e as Error).message}` };
   } finally {
     await client.close().catch(() => undefined);
   }

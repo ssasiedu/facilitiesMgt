@@ -14,7 +14,7 @@ const MAP: Record<string, Tone> = {
 };
 
 const LABELS: Record<string, string> = {
-  issued: 'Issued – not yet due', on_road: 'On-Road', off_road: 'Off-Road', on_job: 'On Job', void: 'Credited / Void', pending_approval: 'Pending approval',
+  issued: 'Open', due: 'Due', overdue: 'Overdue', on_road: 'On-Road', off_road: 'Off-Road', on_job: 'On Job', void: 'Credited / Void', pending_approval: 'Pending approval',
 };
 
 export function StatusBadge({ status, className }: { status: string | null | undefined; className?: string }) {

@@ -95,3 +95,18 @@ export function smsSegments(text: string): { characters: number; segments: numbe
 export function initials(name: string | null | undefined): string {
   return (name ?? '?').split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]?.toUpperCase()).join('');
 }
+
+/**
+ * Payment references from a gateway run to 30-odd characters and break a table cell. Shown in
+ * full they overlap the next column; shown truncated with no marker they look like a different
+ * reference. This keeps both ends, which is what someone matching against a provider statement
+ * reads, and marks the middle as missing. The full value stays available through a title.
+ */
+export function shortRef(reference: string | null | undefined, keep = 20): string {
+  const r = (reference ?? '').trim();
+  if (!r) return '—';
+  if (r.length <= keep) return r;
+  const head = Math.ceil((keep - 1) / 2);
+  const tail = Math.floor((keep - 1) / 2);
+  return `${r.slice(0, head)}…${r.slice(-tail)}`;
+}

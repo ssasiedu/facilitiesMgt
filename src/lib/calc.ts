@@ -18,6 +18,8 @@ export interface EstimateInputs {
   duration_days: number; hours_per_day: number; is_recurring: boolean; visits_per_period: number;
   visit_period: 'week' | 'month'; contract_months: number; overhead_pct: number; contingency_pct: number;
   target_margin_pct: number; proposed_price: number; margin_threshold?: number;
+  /** Tax charged on the quotation. Left out, the analysis simply shows no tax. */
+  tax_pct?: number;
 }
 
 export function totalVisits(e: Pick<EstimateInputs, 'is_recurring' | 'visits_per_period' | 'visit_period' | 'contract_months'>): number {
@@ -38,6 +40,10 @@ export function lineCost(l: EstimateLineInput, hoursPerDay: number, visits: numb
 }
 
 export interface EstimateResult {
+  /** Tax on the proposed price, and the gross the customer pays. Margin is always on the net. */
+  taxAmount: number;
+  priceWithTax: number;
+  recommendedWithTax: number;
   visits: number;
   byCategory: Record<CostCategory, number>;
   direct: number; overhead: number; contingency: number; total: number;
@@ -57,10 +63,16 @@ export function computeEstimate(e: EstimateInputs, lines: EstimateLineInput[]): 
   const total = round2(direct + overhead + contingency);
   const recommended = e.target_margin_pct >= 100 ? 0 : round2(total / (1 - e.target_margin_pct / 100));
   const profit = round2(e.proposed_price - total);
+  /* Tax is collected for the revenue authority, so it never counts as income: profit and margin
+     stay on the ex-tax price. What the customer actually pays is shown separately. */
+  const taxAmount = round2(e.proposed_price * (e.tax_pct ?? 0) / 100);
+  const priceWithTax = round2(e.proposed_price + taxAmount);
+  const recommendedWithTax = round2(recommended * (1 + (e.tax_pct ?? 0) / 100));
   const marginPct = e.proposed_price > 0 ? Math.round((profit / e.proposed_price) * 100 * 1000) / 1000 : 0;
   const warning = e.proposed_price > 0 && e.proposed_price < total ? 'below_cost' : e.proposed_price > 0 && marginPct < e.target_margin_pct ? 'below_margin' : 'none';
   return {
     visits, byCategory, direct, overhead, contingency, total, breakEven: total, recommended, profit, marginPct,
+    taxAmount, priceWithTax, recommendedWithTax,
     perVisit: visits ? round2(total / visits) : 0,
     perDay: e.duration_days * visits ? round2(total / (e.duration_days * visits)) : 0,
     perMonth: e.is_recurring ? round2(total / e.contract_months) : total,

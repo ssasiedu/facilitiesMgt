@@ -2,7 +2,7 @@ import { useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { CheckCircle2, Download, Printer } from 'lucide-react';
-import { displayPhone, formatDate, formatGHS, humanize } from '@/lib/format';
+import { displayPhone, formatDate, formatGHS, humanize, shortRef } from '@/lib/format';
 import { downloadPdf, openPdf } from '@/lib/pdf/download';
 import { ReceiptPdf } from '@/lib/pdf/ReceiptPdf';
 import { Button } from '@/components/ui/Button';
@@ -51,7 +51,9 @@ export default function PublicReceipt() {
       <Facts items={[
         ['Date', formatDate(receipt.payment?.payment_date ?? receipt.issued_at)],
         ['Method', receipt.payment?.payment_methods?.name ?? humanize(receipt.payment?.method_code)],
-        ['Reference', receipt.payment?.reference ?? '—'],
+        ['Reference', receipt.payment?.reference
+          ? <span title={receipt.payment.reference} className="break-all font-mono text-xs">{shortRef(receipt.payment.reference)}</span>
+          : '—'],
         ['Phone', displayPhone(receipt.customer?.phone ?? receipt.customer?.company_phone)],
       ]} />
 

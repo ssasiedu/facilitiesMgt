@@ -131,6 +131,7 @@ export default function EstimateBuilderPage() {
     contingency_pct: Number(values.contingency_pct) || 0,
     target_margin_pct: Number(values.target_margin_pct) || 0,
     proposed_price: Number(values.proposed_price) || 0,
+    tax_pct: Number(values.tax_pct) || 0,
     margin_threshold: Number(settings?.estimate_margin_threshold ?? 15),
   }, (values.lines ?? []).map(toCalcLine)), [values, settings?.estimate_margin_threshold]);
 
@@ -399,7 +400,8 @@ export default function EstimateBuilderPage() {
               <Input label="Contingency %" type="number" step="0.5" disabled={readOnly} {...form.register('contingency_pct')} />
               <Input label="Target margin %" type="number" step="0.5" disabled={readOnly} {...form.register('target_margin_pct')} />
               <Input label="Tax %" type="number" step="0.5" disabled={readOnly} hint="On the quotation" {...form.register('tax_pct')} />
-              <Input className="col-span-2" label="Proposed selling price (GH₵)" type="number" step="0.01" disabled={readOnly} {...form.register('proposed_price')} />
+              <Input className="col-span-2" label="Proposed Quotation Price (GH₵)" type="number" step="0.01" disabled={readOnly}
+                hint="Before tax. The customer's total is shown below." {...form.register('proposed_price')} />
             </div>
 
             {result.warning === 'below_cost' ? (
@@ -425,10 +427,28 @@ export default function EstimateBuilderPage() {
               <div className="flex justify-between border-t border-stone-200 pt-1.5 text-base font-semibold"><dt>Total cost</dt><dd className="tabular-nums">{formatGHS(result.total)}</dd></div>
               <div className="flex justify-between"><dt className="text-stone-600">Break-even price</dt><dd className="tabular-nums">{formatGHS(result.breakEven)}</dd></div>
               <div className="flex justify-between"><dt className="text-stone-600">Recommended at target margin</dt><dd className="tabular-nums font-medium text-brand-700">{formatGHS(result.recommended)}</dd></div>
+              {Number(values.tax_pct) > 0 ? (
+                <div className="flex justify-between text-xs"><dt className="text-stone-500">Recommended, with tax</dt>
+                  <dd className="tabular-nums text-stone-500">{formatGHS(result.recommendedWithTax)}</dd></div>
+              ) : null}
               <div className="flex justify-between border-t border-stone-200 pt-1.5"><dt className="text-stone-600">Profit at proposed price</dt>
                 <dd className={`tabular-nums font-semibold ${result.profit < 0 ? 'text-red-700' : 'text-emerald-700'}`}>{formatGHS(result.profit)}</dd></div>
               <div className="flex justify-between"><dt className="text-stone-600">Margin</dt>
                 <dd className={`tabular-nums font-semibold ${result.marginPct < 0 ? 'text-red-700' : ''}`}>{formatPct(result.marginPct)}</dd></div>
+            </dl>
+
+            {/* Tax is collected on the customer's behalf, so it sits apart from the margin figures. */}
+            <dl className="mt-4 space-y-1.5 border-t border-stone-200 pt-3 text-sm">
+              <div className="flex justify-between"><dt className="text-stone-600">Quotation price, before tax</dt>
+                <dd className="tabular-nums">{formatGHS(Number(values.proposed_price) || 0)}</dd></div>
+              <div className="flex justify-between"><dt className="text-stone-600">Tax at {formatPct(Number(values.tax_pct) || 0)}</dt>
+                <dd className="tabular-nums">{formatGHS(result.taxAmount)}</dd></div>
+              <div className="flex justify-between border-t border-stone-200 pt-1.5 text-base font-semibold">
+                <dt>Customer pays</dt><dd className="tabular-nums">{formatGHS(result.priceWithTax)}</dd></div>
+              <p className="pt-1 text-xs text-stone-500">
+                Tax is collected for the revenue authority, so profit and margin above are worked out on the
+                price before tax.
+              </p>
             </dl>
 
             <dl className="mt-4 grid grid-cols-3 gap-2 border-t border-stone-200 pt-3 text-center text-sm">

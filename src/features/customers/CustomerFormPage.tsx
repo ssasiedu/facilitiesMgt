@@ -8,7 +8,7 @@ import { toast } from 'sonner';
 import { supabase } from '@/lib/supabaseClient';
 import { check } from '@/lib/rpc';
 import { customerSchema, SOURCES, type CustomerForm } from '@/lib/schemas';
-import { useStaff, useZones, toOptions } from '@/lib/lookups';
+import { useStaff, useZones, toOptions, useListOptions, usePaymentTerms } from '@/lib/lookups';
 import { useAuth } from '@/lib/auth';
 import { displayPhone } from '@/lib/format';
 import { PageHeader } from '@/components/ui/PageHeader';
@@ -52,6 +52,10 @@ export default function CustomerFormPage() {
   const navigate = useNavigate();
   const { is, zoneIds } = useAuth();
   const { data: zones } = useZones();
+  const sectors = useListOptions('customer_sector');
+  const sectorOptions = (sectors.data ?? []).map((o) => ({ value: o.label, label: o.label }));
+  const terms = usePaymentTerms();
+  const termOptions = terms.options;
   const { data: staff } = useStaff();
   const [dupes, setDupes] = useState<Duplicate[]>([]);
   const { data: existing, isLoading } = useQuery({
@@ -142,7 +146,7 @@ export default function CustomerFormPage() {
                 <Input label="Trading name" {...register('trading_name')} />
                 <Input label="Registrar-General registration no." {...register('registration_no')} />
                 <Input label="TIN" {...register('tin')} />
-                <Input label="Sector" placeholder="e.g. Government (MMDA), Hospitality" {...register('sector')} />
+                <Select label="Sector" placeholder="Choose…" options={sectorOptions} {...register('sector')} />
                 <Input label="Company phone" required error={err('company_phone')} {...register('company_phone')} />
                 <Input label="Company email" type="email" error={err('company_email')} {...register('company_email')} />
                 <Input label="Office address" {...register('residential_address')} />
@@ -166,7 +170,8 @@ export default function CustomerFormPage() {
               <Select label="Assigned sales executive / zonal officer" options={toOptions((staff ?? []).filter((s) => s.roles.some((r) => ['sales_exec', 'zonal_officer', 'manager'].includes(r))), (s) => s.full_name)} placeholder="—" {...register('assigned_to')} />
               <Select label="Status" options={enumOptions(['active', 'inactive', 'blacklisted'])} {...register('status')} />
               <Input label="Credit limit (GH₵)" type="number" step="0.01" hint="0 = no limit" error={err('credit_limit')} {...register('credit_limit')} />
-              <Input label="Payment terms (days)" type="number" error={err('payment_terms_days')} {...register('payment_terms_days')} />
+              <Select label="Payment terms" required options={termOptions} error={err('payment_terms_days')}
+                hint="Invoice due dates are worked out from this" {...register('payment_terms_days')} />
               <Input label="Tags" placeholder="comma separated" {...register('tags')} />
             </div>
           </Card>

@@ -471,4 +471,40 @@ begin
   raise notice 'PASS every public table has RLS enabled; trial balance balances';
 end $$;
 
+-- ---------- 11. Configurable lists, and Open -> Due -> Overdue ----------
+do $$
+declare v_cust uuid; v_inv_open uuid; v_inv_due uuid; v_inv_late uuid; n int;
+begin
+  -- one default per list, so a form never has to choose between two
+  begin
+    insert into public.list_options (category, value, label, numeric_value, is_default)
+    values ('payment_terms', 'net_120', '120 days', 120, true);
+    assert false, 'a second default payment term was allowed';
+  exception when unique_violation then null;
+  end;
+
+  -- an option is archived, never deleted, so records already using it still read correctly
+  update public.list_options set archived_at = now() where category = 'customer_sector' and value = 'other';
+  assert not exists (select 1 from public.list_options
+    where category = 'customer_sector' and value = 'other' and archived_at is null), 'archived option still offered';
+  update public.list_options set archived_at = null where category = 'customer_sector' and value = 'other';
+
+  select id into v_cust from public.customers limit 1;
+
+  insert into public.invoices (customer_id, issue_date, due_date, status, subtotal, taxable_amount, tax_total, total, balance)
+  values (v_cust, current_date, current_date + 10, 'issued', 100, 100, 0, 100, 100) returning id into v_inv_open;
+  insert into public.invoices (customer_id, issue_date, due_date, status, subtotal, taxable_amount, tax_total, total, balance)
+  values (v_cust, current_date - 7, current_date, 'issued', 100, 100, 0, 100, 100) returning id into v_inv_due;
+  insert into public.invoices (customer_id, issue_date, due_date, status, subtotal, taxable_amount, tax_total, total, balance)
+  values (v_cust, current_date - 30, current_date - 3, 'issued', 100, 100, 0, 100, 100) returning id into v_inv_late;
+
+  n := public.job_mark_overdue();
+
+  assert (select status from public.invoices where id = v_inv_open) = 'issued', 'an invoice not yet due left Open';
+  assert (select status from public.invoices where id = v_inv_due) = 'due', 'an invoice due today reads Due';
+  assert (select status from public.invoices where id = v_inv_late) = 'overdue', 'an invoice past its date reads Overdue';
+
+  raise notice 'PASS lists keep one default and archive rather than delete; invoices run Open -> Due -> Overdue';
+end $$;
+
 rollback;

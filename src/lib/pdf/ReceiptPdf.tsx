@@ -1,5 +1,6 @@
 import { Text, View } from '@react-pdf/renderer';
 import { date, Header, money, s, Shell, Table, Totals, type CompanyInfo } from './PdfKit';
+import { shortRef } from '@/lib/format';
 
 export interface ReceiptDoc {
   receipt_no: string; amount: number; issued_at: string;
@@ -21,7 +22,7 @@ export function ReceiptPdf({ company, receipt }: { company: CompanyInfo; receipt
         <View style={[s.box, { width: '38%' }]}>
           <Text style={s.muted}>Amount received</Text>
           <Text style={{ fontSize: 16, fontWeight: 700 }}>{money(receipt.amount)}</Text>
-          <Text style={s.muted}>{receipt.payment?.payment_methods?.name ?? receipt.payment?.method_code}{receipt.payment?.reference ? ` · Ref ${receipt.payment.reference}` : ''}</Text>
+          <Text style={s.muted}>{receipt.payment?.payment_methods?.name ?? receipt.payment?.method_code}{receipt.payment?.reference ? ` · Ref ${shortRef(receipt.payment.reference, 24)}` : ''}</Text>
         </View>
       </View>
       <Table brand={company.brand_color} rows={receipt.allocations} columns={[

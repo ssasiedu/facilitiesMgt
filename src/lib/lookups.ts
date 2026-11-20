@@ -39,3 +39,27 @@ export const useStaff = (role?: string) => useList<StaffMember>(`staff-${role ??
 });
 
 export const toOptions = <T extends { id: string }>(rows: T[] | undefined, label: (r: T) => string): Option[] => (rows ?? []).map((r) => ({ value: r.id, label: label(r) }));
+
+export interface ListOption { id: string; category: string; value: string; label: string; numeric_value: number | null; is_default: boolean; sort_order: number }
+
+/** Dropdown values a Super Admin maintains under Settings (sector, payment terms, and so on). */
+export function useListOptions(category: string) {
+  return useQuery({
+    queryKey: ['lookup', 'list_options', category],
+    staleTime: 5 * 60_000,
+    queryFn: async () => check(await supabase.from('list_options')
+      .select('id, category, value, label, numeric_value, is_default, sort_order')
+      .eq('category', category).is('archived_at', null)
+      .order('sort_order').order('label')) as ListOption[],
+  });
+}
+
+/** Payment terms carry their day count, which is what the due date is worked out from. */
+export function usePaymentTerms() {
+  const q = useListOptions('payment_terms');
+  return {
+    ...q,
+    options: (q.data ?? []).map((o) => ({ value: String(o.numeric_value ?? 0), label: o.label })),
+    defaultDays: (q.data ?? []).find((o) => o.is_default)?.numeric_value ?? 7,
+  };
+}

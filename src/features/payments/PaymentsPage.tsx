@@ -8,7 +8,7 @@ import { useAuth } from '@/lib/auth';
 import { hasAny } from '@/lib/permissions';
 import { useServerTable } from '@/lib/useServerTable';
 import { useBankAccounts, usePaymentMethods, toOptions } from '@/lib/lookups';
-import { formatDate, formatGHS, humanize } from '@/lib/format';
+import { formatDate, formatGHS, humanize, shortRef } from '@/lib/format';
 import { searchCustomers } from '@/features/customers/api';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { Card } from '@/components/ui/Card';
@@ -93,7 +93,8 @@ export default function PaymentsPage() {
       exportValue: (r) => r.customer?.display_name },
     { key: 'amount', header: 'Amount', className: 'text-right', sort: 'amount', render: (r) => <span className="tabular-nums font-medium">{formatGHS(r.amount)}</span>, exportValue: (r) => r.amount },
     { key: 'method', header: 'Method', render: (r) => humanize(r.method_code), exportValue: (r) => r.method_code },
-    { key: 'reference', header: 'Reference', render: (r) => r.reference ?? '—', exportValue: (r) => r.reference, hideOnMobile: true },
+    { key: 'reference', header: 'Reference', hideOnMobile: true, exportValue: (r) => r.reference,
+      render: (r) => (r.reference ? <span title={r.reference} className="font-mono text-xs">{shortRef(r.reference)}</span> : '—') },
     { key: 'into', header: 'Into', render: (r) => r.bank_account?.name ?? '—', exportValue: (r) => r.bank_account?.name, hideOnMobile: true },
     { key: 'applied', header: 'Applied to', render: (r) => (
       r.payment_allocations.length
