@@ -552,6 +552,21 @@ begin
     assert sqlerrm like '%cannot be changed%', format('wrong refusal: %s', sqlerrm);
   end;
 
+  /* And a declined one. 'declined' is the status the table allows - 'rejected' belongs to
+     estimates - so a guard written against the wrong word would silently protect nothing. */
+  update public.quotations set status = 'declined' where id = v_quote;
+  begin
+    update public.quotation_lines set unit_price = 2 where quotation_id = v_quote and sort_order = 10;
+    assert false, 'a declined quotation let its lines be changed';
+  exception when others then
+    assert sqlerrm like '%cannot be changed%', format('wrong refusal for declined: %s', sqlerrm);
+  end;
+
+  -- every status the guard names must be one the table actually allows
+  assert (select count(*) from unnest(array['accepted','declined','expired']) st
+          where pg_get_constraintdef((select oid from pg_constraint where conname = 'quotations_status_check')) like '%' || st || '%') = 3,
+    'the guard names a quotation status the table does not allow';
+
   perform pg_temp.logout();
   raise notice 'PASS quotation carries sellable lines, per-rate tax breakdown and payment terms; accepted ones are frozen';
 end $$;

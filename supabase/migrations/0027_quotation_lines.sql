@@ -100,8 +100,9 @@ declare v_id uuid; v_status text;
 begin
   v_id := coalesce(new.quotation_id, old.quotation_id);
   select status into v_status from public.quotations where id = v_id;
-  if v_status in ('accepted', 'rejected', 'expired') then
-    raise exception 'A % quotation cannot be changed. Copy it to a new one instead.', v_status;
+  -- quotations are declined, not rejected; estimates are the ones that get rejected
+  if v_status in ('accepted', 'declined', 'expired') then
+    raise exception 'This quotation has been %. Its lines cannot be changed - copy it to a new one instead.', v_status;
   end if;
   -- recalc_quotation writes line_total back, which re-fires this trigger; only the outermost
   -- call should recalculate, the same guard the invoice lines use.
@@ -196,22 +197,50 @@ end $$;
 
 -- ------------------------------------------------- quotations already in the system get lines
 /* Without this, every quotation raised before today would print an empty table. Each gets the
-   single line its stored total implies, so old documents keep reading correctly. */
+   single line its stored total implies.
+
+   Three things make this more delicate than it looks, and all three are about not altering a
+   document that has already been sent:
+
+   1. The guard above refuses line changes on an accepted quotation - correctly, for a user. The
+      backfill is not a user, so the recalc trigger is lifted for the length of it.
+   2. With the trigger lifted, nothing recomputes the totals, which is exactly what is wanted. A
+      recalc would price the tax at today's active rates, so a quotation accepted when no tax was
+      active would silently gain VAT and its total would change. The stored amount, tax_amount and
+      total are left untouched.
+   3. The tax row is therefore derived from the tax already stored on the quotation, not from the
+      tax table, so a reprint shows the figures the customer agreed to. */
+alter table public.quotation_lines disable trigger trg_quotation_lines_recalc;
+
 do $$
-declare q record; v_unit numeric;
+declare q record; v_rate numeric;
 begin
   for q in
-    select qt.id, qt.title, qt.amount, qt.estimate_id, e.is_recurring, e.contract_months, e.visits_per_period, e.visit_period, e.service_id, s.name as service_name
+    select qt.id, qt.title, qt.amount, qt.tax_amount, e.service_id, s.name as service_name
     from public.quotations qt
     left join public.estimates e on e.id = qt.estimate_id
     left join public.services s on s.id = e.service_id
     where not exists (select 1 from public.quotation_lines l where l.quotation_id = qt.id)
   loop
-    insert into public.quotation_lines (quotation_id, service_id, description, quantity, unit_price, sort_order)
-    values (q.id, q.service_id, coalesce(q.service_name, q.title, 'Services as quoted'), 1, round(coalesce(q.amount, 0), 2), 10);
+    insert into public.quotation_lines (quotation_id, service_id, description, quantity, unit_price, line_total, sort_order)
+    values (q.id, q.service_id, coalesce(q.service_name, q.title, 'Services as quoted'),
+            1, round(coalesce(q.amount, 0), 2), round(coalesce(q.amount, 0), 2), 10);
+
+    -- The rate the stored tax implies, so the breakdown adds up to what was sent.
+    if coalesce(q.tax_amount, 0) <> 0 then
+      v_rate := case when coalesce(q.amount, 0) <> 0
+                     then round(q.tax_amount * 100 / q.amount, 4)
+                     else 0 end;
+      insert into public.quotation_taxes (quotation_id, name, rate, base_amount, amount)
+      values (q.id, 'Tax', v_rate, round(coalesce(q.amount, 0), 2), round(q.tax_amount, 2));
+    end if;
   end loop;
 end $$;
 
--- Backfill the terms wording onto documents that predate the column.
+alter table public.quotation_lines enable trigger trg_quotation_lines_recalc;
+
+/* The standing wording goes only onto quotations still in play. An accepted or declined one was
+   sent without it, and adding it now would make a reprint differ from the document the customer
+   actually has. */
 update public.quotations set payment_terms = (select default_payment_terms from public.company_settings where id = 1)
-where payment_terms is null;
+where payment_terms is null and status not in ('accepted', 'declined', 'expired');

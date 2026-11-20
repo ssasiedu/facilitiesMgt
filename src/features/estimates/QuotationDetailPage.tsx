@@ -81,7 +81,8 @@ export default function QuotationDetailPage() {
   }, [quote, form, termOptions.data]);
 
   // Once accepted, this is the document the customer agreed to, so it stops moving.
-  const frozen = !!quote && ['accepted', 'rejected', 'expired'].includes(quote.status);
+  // A quotation is declined, not rejected; the statuses are quotations_status_check's.
+  const frozen = !!quote && ['accepted', 'declined', 'expired'].includes(quote.status);
   const readOnly = frozen || !canWrite;
 
   const activeTaxes = (taxes.data ?? []).filter((t) => t.active);
