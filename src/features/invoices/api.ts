@@ -33,7 +33,7 @@ export async function loadInvoice(id: string): Promise<InvoiceFull> {
 }
 
 export interface InvoiceFormValues {
-  customer_id: string; issue_date: string; due_date: string; notes: string; terms: string;
+  customer_id: string; issue_date: string; due_date: string; notes: string; terms: string; payment_terms: string;
   lines: { service_id: string; description: string; quantity: number; unit_price: number; discount: number; taxable: boolean }[];
 }
 
@@ -41,7 +41,7 @@ export interface InvoiceFormValues {
 export async function saveInvoice(id: string | undefined, v: InvoiceFormValues): Promise<string> {
   const header = nullify({
     customer_id: v.customer_id, issue_date: v.issue_date, due_date: v.due_date || null,
-    notes: v.notes || null, terms: v.terms || null, source: 'manual',
+    notes: v.notes || null, terms: v.terms || null, payment_terms: v.payment_terms || null, source: 'manual',
   });
   let invoiceId = id;
   if (invoiceId) {

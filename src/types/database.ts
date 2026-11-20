@@ -427,6 +427,7 @@ export type Database = {
           notifications_enabled: Json;
           cron_times: Json;
           updated_at: string;
+          default_payment_terms: string;
         };
         Insert: {
           id?: number;
@@ -464,6 +465,7 @@ export type Database = {
           notifications_enabled?: Json;
           cron_times?: Json;
           updated_at?: string;
+          default_payment_terms?: string;
         };
         Update: {
           id?: number;
@@ -501,6 +503,7 @@ export type Database = {
           notifications_enabled?: Json;
           cron_times?: Json;
           updated_at?: string;
+          default_payment_terms?: string;
         };
         Relationships: [];
       };
@@ -2044,6 +2047,7 @@ export type Database = {
           created_at: string;
           updated_at: string;
           created_by: string | null;
+          payment_terms: string | null;
         };
         Insert: {
           id?: string;
@@ -2078,6 +2082,7 @@ export type Database = {
           created_at?: string;
           updated_at?: string;
           created_by?: string | null;
+          payment_terms?: string | null;
         };
         Update: {
           id?: string;
@@ -2112,6 +2117,7 @@ export type Database = {
           created_at?: string;
           updated_at?: string;
           created_by?: string | null;
+          payment_terms?: string | null;
         };
         Relationships: [];
       };
@@ -3207,6 +3213,81 @@ export type Database = {
         };
         Relationships: [];
       };
+      quotation_lines: {
+        Row: {
+          id: string;
+          quotation_id: string;
+          service_id: string | null;
+          description: string;
+          quantity: number;
+          unit_price: number;
+          discount: number;
+          taxable: boolean;
+          line_total: number;
+          sort_order: number;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          quotation_id: string;
+          service_id?: string | null;
+          description: string;
+          quantity?: number;
+          unit_price?: number;
+          discount?: number;
+          taxable?: boolean;
+          line_total?: number;
+          sort_order?: number;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          quotation_id?: string;
+          service_id?: string | null;
+          description?: string;
+          quantity?: number;
+          unit_price?: number;
+          discount?: number;
+          taxable?: boolean;
+          line_total?: number;
+          sort_order?: number;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
+      quotation_taxes: {
+        Row: {
+          id: string;
+          quotation_id: string;
+          tax_rate_id: string | null;
+          name: string;
+          rate: number;
+          compound: boolean;
+          base_amount: number;
+          amount: number;
+        };
+        Insert: {
+          id?: string;
+          quotation_id: string;
+          tax_rate_id?: string | null;
+          name: string;
+          rate: number;
+          compound?: boolean;
+          base_amount?: number;
+          amount?: number;
+        };
+        Update: {
+          id?: string;
+          quotation_id?: string;
+          tax_rate_id?: string | null;
+          name?: string;
+          rate?: number;
+          compound?: boolean;
+          base_amount?: number;
+          amount?: number;
+        };
+        Relationships: [];
+      };
       quotations: {
         Row: {
           id: string;
@@ -3228,6 +3309,7 @@ export type Database = {
           created_at: string;
           updated_at: string;
           created_by: string | null;
+          payment_terms: string | null;
         };
         Insert: {
           id?: string;
@@ -3249,6 +3331,7 @@ export type Database = {
           created_at?: string;
           updated_at?: string;
           created_by?: string | null;
+          payment_terms?: string | null;
         };
         Update: {
           id?: string;
@@ -3270,6 +3353,7 @@ export type Database = {
           created_at?: string;
           updated_at?: string;
           created_by?: string | null;
+          payment_terms?: string | null;
         };
         Relationships: [];
       };
@@ -4618,6 +4702,7 @@ export type Database = {
       pay_expense: { Args: { p_expense_id: string; p_bank_account_id: string; p_reference: string; }; Returns: Json };
       post_journal: { Args: { p_entry_id: string; }; Returns: Json };
       reassign_job_truck: { Args: { p_job_id: string; p_old_truck: string; p_new_truck: string; }; Returns: Json };
+      recalc_quotation: { Args: { p_quotation_id: string; }; Returns: Json };
       receive_stock: { Args: { p_item: string; p_location: string; p_quantity: number; p_unit_cost: number; p_note: string; p_adjust?: boolean; }; Returns: Json };
       record_bank_transfer: { Args: { p_from: string; p_to: string; p_amount: number; p_fee: number; p_date: string; p_reference: string; }; Returns: Json };
       record_payment: { Args: { p_customer_id: string; p_amount: number; p_method: string; p_date?: string; p_reference?: string; p_bank_account_id?: string; p_allocations?: Json; p_notes?: string; p_provider?: string; p_provider_ref?: string; }; Returns: Json };

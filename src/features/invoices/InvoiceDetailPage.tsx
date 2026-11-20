@@ -65,7 +65,7 @@ export default function InvoiceDetailPage() {
         period_start: inv.period_start, period_end: inv.period_end,
         subtotal: Number(inv.subtotal), discount_total: Number(inv.discount_total), tax_total: Number(inv.tax_total),
         total: Number(inv.total), amount_paid: Number(inv.amount_paid), amount_credited: Number(inv.amount_credited),
-        balance: Number(inv.balance), notes: inv.notes, terms: inv.terms,
+        balance: Number(inv.balance), notes: inv.notes, terms: inv.terms, payment_terms: inv.payment_terms,
         lines: inv.invoice_lines.map((l) => ({
           description: l.description, quantity: Number(l.quantity), unit_price: Number(l.unit_price),
           discount: Number(l.discount), line_total: Number(l.line_total),

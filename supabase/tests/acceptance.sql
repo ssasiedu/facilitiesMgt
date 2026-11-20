@@ -507,4 +507,53 @@ begin
   raise notice 'PASS lists keep one default and archive rather than delete; invoices run Open -> Due -> Overdue';
 end $$;
 
+-- ---------- 12. A quotation reads like an invoice: lines, and tax broken down ----------
+do $$
+declare v_est uuid; v_quote uuid; v_lines int; v_tax numeric; v_net numeric; v_total numeric; v_terms text;
+begin
+  -- real rates, so the breakdown has something to break down
+  update public.tax_rates set active = true, rate = 2.5 where name = 'NHIL';
+  update public.tax_rates set active = true, rate = 15  where name = 'VAT';
+
+  select id into v_est from public.estimates where is_recurring and contract_months = 12 limit 1;
+  update public.estimates set status = 'approved' where id = v_est;
+
+  perform pg_temp.login('t.manager1@test.local');
+
+  v_quote := public.create_quotation(v_est, 30, null);
+
+  select count(*) into v_lines from public.quotation_lines where quotation_id = v_quote;
+  assert v_lines >= 1, 'a quotation was created with no lines';
+
+  -- the lines must add up to the price that was approved, to the pesewa
+  select amount, tax_amount, total, payment_terms into v_net, v_tax, v_total
+  from public.quotations where id = v_quote;
+  assert v_net = (select round(proposed_price, 2) from public.estimates where id = v_est),
+    format('quotation lines total %s, estimate approved %s', v_net, (select proposed_price from public.estimates where id = v_est));
+
+  -- each active rate gets its own row, which is what the customer sees broken out
+  assert (select count(*) from public.quotation_taxes where quotation_id = v_quote) = 2, 'tax was not broken down per rate';
+  assert v_tax = (select coalesce(sum(amount), 0) from public.quotation_taxes where quotation_id = v_quote), 'tax total does not match its rows';
+  assert v_total = v_net + v_tax, 'quotation total is not net plus tax';
+
+  select payment_terms into v_terms from public.quotations where id = v_quote;
+  assert v_terms = '70% before work begins and 30% after completion', format('payment terms defaulted to %s', v_terms);
+
+  -- editing a line moves the totals and the tax with it
+  update public.quotation_lines set unit_price = unit_price + 100 where quotation_id = v_quote and sort_order = 10;
+  assert (select total from public.quotations where id = v_quote) > v_total, 'editing a line did not move the total';
+
+  -- an accepted quotation is what the customer agreed to, so its lines stop moving
+  update public.quotations set status = 'accepted' where id = v_quote;
+  begin
+    update public.quotation_lines set unit_price = 1 where quotation_id = v_quote and sort_order = 10;
+    assert false, 'an accepted quotation let its lines be changed';
+  exception when others then
+    assert sqlerrm like '%cannot be changed%', format('wrong refusal: %s', sqlerrm);
+  end;
+
+  perform pg_temp.logout();
+  raise notice 'PASS quotation carries sellable lines, per-rate tax breakdown and payment terms; accepted ones are frozen';
+end $$;
+
 rollback;

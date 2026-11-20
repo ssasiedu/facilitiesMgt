@@ -5,7 +5,7 @@ import { formatNumber, humanize } from '../format';
 export interface InvoiceDoc {
   invoice_no: string | null; status: string; issue_date: string; due_date: string | null; period_start?: string | null; period_end?: string | null;
   subtotal: number; discount_total: number; tax_total: number; total: number; amount_paid: number; amount_credited: number; balance: number;
-  notes?: string | null; terms?: string | null;
+  notes?: string | null; terms?: string | null; payment_terms?: string | null;
   lines: { description: string; quantity: number; unit_price: number; discount: number; line_total: number }[];
   taxes: { name: string; rate: number; amount: number }[];
   customer: { display_name: string; customer_code?: string | null; phone?: string | null; company_phone?: string | null; email?: string | null; company_email?: string | null; residential_address?: string | null; digital_address?: string | null; tin?: string | null } | null;
@@ -51,6 +51,12 @@ export function InvoicePdf({ company, invoice, link }: { company: CompanyInfo; i
         ...(Number(invoice.amount_credited) ? [['Credited', `-${money(invoice.amount_credited)}`] as [string, string]] : []),
         ['Balance due', money(invoice.balance), true],
       ]} />
+      {invoice.payment_terms ? (
+        <View style={{ marginTop: 10 }}>
+          <Text style={[s.muted, s.small]}>PAYMENT TERMS</Text>
+          <Text style={s.bold}>{invoice.payment_terms}</Text>
+        </View>
+      ) : null}
       <PaymentDetails company={company} />
       {link ? <Text style={[s.muted, { marginTop: 8 }]}>View or pay online: {link}</Text> : null}
       {invoice.terms || company.invoice_terms ? <Text style={[s.small, s.muted, { marginTop: 10 }]}>{invoice.terms || company.invoice_terms}</Text> : null}

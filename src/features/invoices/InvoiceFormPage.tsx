@@ -7,7 +7,7 @@ import { Plus, Save, Trash2 } from 'lucide-react';
 import { useAction } from '@/lib/rpc';
 import { invoiceSchema } from '@/lib/schemas';
 import { formatGHS, isoDate, round2 } from '@/lib/format';
-import { useServices, useTaxRates, toOptions } from '@/lib/lookups';
+import { useServices, useTaxRates, toOptions, useListOptions } from '@/lib/lookups';
 import { searchCustomers } from '@/features/customers/api';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { Card } from '@/components/ui/Card';
@@ -25,7 +25,7 @@ import { loadInvoice, saveInvoice, type InvoiceFormValues } from './api';
 const EMPTY_LINE = { service_id: '', description: '', quantity: 1, unit_price: 0, discount: 0, taxable: true };
 
 const DEFAULTS: InvoiceFormValues = {
-  customer_id: '', issue_date: isoDate(), due_date: '', notes: '', terms: '', lines: [EMPTY_LINE],
+  customer_id: '', issue_date: isoDate(), due_date: '', notes: '', terms: '', payment_terms: '', lines: [EMPTY_LINE],
 };
 
 /** Manual invoice entry (spec 4.9). Job-order and contract invoices are raised by the database. */
@@ -39,6 +39,7 @@ export default function InvoiceFormPage() {
 
   const form = useForm<FieldValues>({ resolver: zodResolver(invoiceSchema), defaultValues: DEFAULTS as unknown as FieldValues });
   const lines = useFieldArray({ control: form.control, name: 'lines' });
+  const paymentTermOptions = useListOptions('payment_terms');
   const values = form.watch() as InvoiceFormValues;
 
   const query = useQuery({ queryKey: ['invoice', id], enabled: !!id, queryFn: () => loadInvoice(id as string) });
@@ -49,7 +50,7 @@ export default function InvoiceFormPage() {
     setCustomerLabel(inv.customer?.display_name ?? null);
     form.reset({
       customer_id: inv.customer_id, issue_date: inv.issue_date, due_date: inv.due_date ?? '',
-      notes: inv.notes ?? '', terms: inv.terms ?? '',
+      notes: inv.notes ?? '', terms: inv.terms ?? '', payment_terms: inv.payment_terms ?? '',
       lines: [...inv.invoice_lines].sort((a, b) => a.sort_order - b.sort_order).map((l) => ({
         service_id: l.service_id ?? '', description: l.description, quantity: Number(l.quantity),
         unit_price: Number(l.unit_price), discount: Number(l.discount), taxable: l.taxable,
@@ -152,6 +153,11 @@ export default function InvoiceFormPage() {
 
           <Card title="Notes and terms">
             <div className="space-y-4">
+              {/* The wording the customer reads about when to pay, separate from the legal terms. */}
+              <Select label="Payment terms" placeholder="Use the standard wording"
+                options={(paymentTermOptions.data ?? []).map((o) => ({ value: o.label, label: o.label }))}
+                hint="Maintained under Settings · Configuration. Leave it alone to inherit the quotation's terms."
+                {...form.register('payment_terms')} />
               <Textarea label="Notes (shown on the invoice)" {...form.register('notes')} />
               <Textarea label="Terms" hint="Leave blank to use the standard terms from Settings" {...form.register('terms')} />
             </div>

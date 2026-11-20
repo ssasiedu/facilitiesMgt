@@ -11,7 +11,7 @@ const TOKEN = /^[a-f0-9]{24,64}$/;
 async function invoiceByToken(token: string) {
   const admin = adminClient();
   const { data: inv } = await admin.from("invoices")
-    .select("id, invoice_no, status, issue_date, due_date, period_start, period_end, subtotal, discount_total, tax_total, total, amount_paid, amount_credited, balance, notes, terms, customer_id, job_order_id, contract_id")
+    .select("id, invoice_no, status, issue_date, due_date, period_start, period_end, subtotal, discount_total, tax_total, total, amount_paid, amount_credited, balance, notes, terms, payment_terms, customer_id, job_order_id, contract_id")
     .eq("public_token", token).neq("status", "draft").maybeSingle();
   if (!inv) return null;
   const [lines, taxes, customer, contacts] = await Promise.all([

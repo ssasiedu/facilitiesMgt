@@ -29,6 +29,7 @@ const EstimateTemplatesPage = L(() => import('./features/estimates/EstimateTempl
 const EstimatesPage = L(() => import('./features/estimates/EstimatesPage'));
 const EstimateBuilderPage = L(() => import('./features/estimates/EstimateBuilderPage'));
 const QuotationsPage = L(() => import('./features/estimates/QuotationsPage'));
+const QuotationDetailPage = L(() => import('./features/estimates/QuotationDetailPage'));
 const JobOrdersPage = L(() => import('./features/job-orders/JobOrdersPage'));
 const JobOrderFormPage = L(() => import('./features/job-orders/JobOrderFormPage'));
 const JobOrderDetailPage = L(() => import('./features/job-orders/JobOrderDetailPage'));
@@ -122,6 +123,7 @@ export const router = createBrowserRouter([
       { path: 'estimates/templates', element: gate(SALES, <EstimateTemplatesPage />) },
       { path: 'estimates/:id', element: gate(SALES, <EstimateBuilderPage />) },
       { path: 'quotations', element: gate(SALES, <QuotationsPage />) },
+      { path: 'quotations/:id', element: gate(SALES, <QuotationDetailPage />) },
       { path: 'jobs', element: gate(JOBS, <JobOrdersPage />) },
       { path: 'jobs/new', element: gate(['manager', 'ops_officer', 'sales_exec'], <JobOrderFormPage />) },
       { path: 'jobs/calendar', element: gate(JOBS, <DispatchCalendarPage />) },

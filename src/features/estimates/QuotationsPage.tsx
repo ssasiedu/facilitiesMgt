@@ -5,10 +5,12 @@ import { useServerTable } from '@/lib/useServerTable';
 import { useAuth } from '@/lib/auth';
 import { hasAny } from '@/lib/permissions';
 import { useSettings } from '@/lib/settings';
-import { useAction } from '@/lib/rpc';
+import { friendlyError, useAction } from '@/lib/rpc';
 import { formatDate, formatGHS } from '@/lib/format';
 import { downloadPdf } from '@/lib/pdf/download';
 import { QuotationPdf } from '@/lib/pdf/QuotationPdf';
+import { loadQuotation, toQuotationDoc } from './quotationApi';
+import { toast } from 'sonner';
 import { companyFromSettings } from '@/lib/pdf/company';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { DataTable, FilterSelect, type Column } from '@/components/ui/DataTable';
@@ -45,24 +47,24 @@ export default function QuotationsPage() {
     onSuccess: () => void table.refetch(),
   });
 
-  const download = (row: Row) => {
+  /* The lines and the tax breakdown are not on the list row, so the document is loaded in full
+     before printing. That way the quotation and the invoice that follows it print identically. */
+  const download = async (row: Row) => {
     if (!settings) return;
-    void downloadPdf(
-      <QuotationPdf
-        company={companyFromSettings(settings)}
-        quote={{
-          quote_no: row.quote_no ?? 'DRAFT', quote_date: row.quote_date, valid_until: row.valid_until,
-          title: row.title, description: row.description, amount: Number(row.amount), tax_amount: Number(row.tax_amount),
-          total: Number(row.total), terms: row.terms ?? settings.invoice_terms,
-          customer_name: row.customer?.display_name ?? row.lead?.name ?? 'Customer',
-        }}
-      />,
-      `quotation-${row.quote_no ?? 'draft'}`,
-    );
+    try {
+      const full = await loadQuotation(row.id);
+      await downloadPdf(
+        <QuotationPdf company={companyFromSettings(settings)} quote={toQuotationDoc(full, settings.invoice_terms)} />,
+        `quotation-${row.quote_no ?? 'draft'}`,
+      );
+    } catch (e) {
+      toast.error(friendlyError(e));
+    }
   };
 
   const columns: Column<Row>[] = [
-    { key: 'no', header: 'Number', sort: 'quote_no', render: (r) => <span className="font-mono text-xs">{r.quote_no ?? 'Draft'}</span>, exportValue: (r) => r.quote_no },
+    { key: 'no', header: 'Number', sort: 'quote_no', exportValue: (r) => r.quote_no,
+      render: (r) => <Link to={`/quotations/${r.id}`} className="font-mono text-xs text-brand-700 hover:underline">{r.quote_no ?? 'Draft'}</Link> },
     { key: 'party', header: 'Customer or lead', render: (r) => r.customer?.display_name ?? r.lead?.name ?? '—', exportValue: (r) => r.customer?.display_name ?? r.lead?.name },
     { key: 'title', header: 'Title', render: (r) => r.title ?? '—', exportValue: (r) => r.title, hideOnMobile: true },
     { key: 'estimate', header: 'Estimate', render: (r) => (r.estimate ? <Link to={`/estimates/${r.estimate.id}`} className="text-brand-700 hover:underline">{r.estimate.estimate_no}</Link> : '—'),
@@ -73,7 +75,7 @@ export default function QuotationsPage() {
     { key: 'status', header: 'Status', render: (r) => <StatusBadge status={r.status} />, exportValue: (r) => r.status },
     { key: 'actions', header: '', className: 'text-right', render: (r) => (
       <div className="flex justify-end gap-1">
-        <Button variant="ghost" size="sm" aria-label="Download PDF" onClick={() => download(r)}><Download className="h-4 w-4" /></Button>
+        <Button variant="ghost" size="sm" aria-label="Download PDF" onClick={() => void download(r)}><Download className="h-4 w-4" /></Button>
         {canEditQuotes && ['draft', 'sent'].includes(r.status) ? <>
           {r.status === 'draft' ? (
             <Button variant="secondary" size="sm" loading={mark.isPending} onClick={() => mark.mutate({ id: r.id, next: 'sent' })}>Mark sent</Button>

@@ -214,18 +214,56 @@ export default function EstimateBuilderPage() {
     toast.success(`Template "${t.name}" applied — check the quantities`);
   };
 
+  /* A preview from the builder, before any quotation has been raised. It prints the same shape
+     as the real thing — one line for the work, with the tax shown as its own row — so what is
+     checked here is what the customer will receive. The saved quotation can be split into more
+     lines once it exists. */
   const downloadQuote = () => {
     if (!settings) return;
-    const taxAmount = Math.round(Number(values.proposed_price) * Number(values.tax_pct) / 100 * 100) / 100;
+    const price = Number(values.proposed_price) || 0;
+    const pct = Number(values.tax_pct) || 0;
+    const taxAmount = Math.round(price * pct) / 100;
+    const serviceName = estimate?.service?.name ?? values.title ?? 'Services';
+    const months = Number(values.contract_months) || 1;
+    const recurring = !!values.is_recurring && months > 1;
+
+    /* Same rule the database uses when the quotation is raised: a rounded monthly fee can leave
+       the contract a few pesewas short of the approved price, and the difference goes on its own
+       line rather than being hidden in the rate. */
+    const qty = recurring ? months : 1;
+    const unit = Math.round((price / qty) * 100) / 100;
+    const lineTotal = Math.round(unit * qty * 100) / 100;
+    const quoteLines = [{
+      description: recurring
+        ? `${serviceName} – ${Number(values.visits_per_period) || 1} visit(s) per ${values.visit_period ?? 'month'} (monthly fee)`
+        : serviceName,
+      quantity: qty, unit_price: unit, discount: 0, line_total: lineTotal,
+    }];
+    if (lineTotal !== price) {
+      quoteLines.push({
+        description: 'Rounding adjustment', quantity: 1,
+        unit_price: Math.round((price - lineTotal) * 100) / 100, discount: 0,
+        line_total: Math.round((price - lineTotal) * 100) / 100,
+      });
+    }
+
     void downloadPdf(
       <QuotationPdf
         company={companyFromSettings(settings)}
         quote={{
-          quote_no: estimate?.estimate_no ?? 'DRAFT', quote_date: new Date().toISOString().slice(0, 10),
-          valid_until: '', title: values.title || estimate?.service?.name || 'Proposal',
-          description: values.notes ?? '', amount: Number(values.proposed_price), tax_amount: taxAmount,
-          total: Number(values.proposed_price) + taxAmount, terms: settings.invoice_terms ?? '',
-          customer_name: customerLabel ?? leadLabel ?? 'Customer',
+          quote_no: estimate?.estimate_no ?? 'DRAFT',
+          quote_date: new Date().toISOString().slice(0, 10),
+          valid_until: '',
+          title: values.title || serviceName || 'Proposal',
+          description: values.notes ?? '',
+          amount: price,
+          tax_amount: taxAmount,
+          total: price + taxAmount,
+          terms: settings.invoice_terms ?? '',
+          payment_terms: settings.default_payment_terms ?? null,
+          lines: quoteLines,
+          taxes: taxAmount ? [{ name: 'Tax', rate: pct, amount: taxAmount }] : [],
+          customer: { display_name: customerLabel ?? leadLabel ?? 'Customer' },
         }}
       />,
       `quotation-${estimate?.estimate_no ?? 'draft'}`,
