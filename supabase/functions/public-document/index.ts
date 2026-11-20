@@ -125,7 +125,11 @@ Deno.serve(async (req) => {
     };
     try {
       const url = settings.payment_provider === "hubtel" ? await hubtelCheckout.initialize(request) : await paystack.initialize(request);
-      return json({ url });
+      /* The amount the session was actually opened for goes back with the link. The browser
+         compares it with what the customer typed and refuses to send them on if the two differ -
+         which is also how an older copy of this function, one that ignores `amount` and charges
+         the whole balance, is caught before anybody is overcharged. */
+      return json({ url, amount: charge });
     } catch (e) {
       await admin.from("payment_sessions").update({ status: "failed" }).eq("reference", reference);
       return errorResponse((e as Error).message, 502);

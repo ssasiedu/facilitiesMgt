@@ -58,7 +58,22 @@ export default function PublicInvoice() {
     if (amountProblem) { toast.error(amountProblem); return; }
     setPaying(true);
     try {
-      const { url } = await startInvoicePayment(token, payChoice === 'part' ? payAmount : undefined);
+      const partial = payChoice === 'part';
+      const { url, amount: opening } = await startInvoicePayment(token, partial ? payAmount : undefined);
+
+      /* Never send someone to a gateway for an amount they did not choose. The server answers
+         with the figure it opened the session for; if that is missing, or is not what was asked,
+         the customer stops here rather than finding a different number on the payment page. */
+      const wrong = partial && (typeof opening !== 'number' || Math.abs(opening - payAmount) > 0.005);
+      if (wrong) {
+        toast.error(
+          `This would have charged you ${typeof opening === 'number' ? formatGHS(opening) : 'the full balance'} `
+          + `instead of ${formatGHS(payAmount)}, so it has been stopped. Please tell us before trying again.`,
+        );
+        setPaying(false);
+        return;
+      }
+
       window.location.href = url;
     } catch (e) {
       toast.error((e as Error).message);

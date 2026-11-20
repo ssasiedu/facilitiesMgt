@@ -184,9 +184,21 @@ person only receives the rows their policies already allow.
 
 **9. Deploy the Edge Functions and set the secrets.**
 
+One command deploys every function in `supabase/functions`, which is what you want: working out
+which ones a change touched is easy to get wrong, and a function left on an older copy fails
+quietly rather than loudly.
+
+```bash
+supabase functions deploy
+```
+
+Run it after every `git pull`, alongside `supabase db push --remote`. Naming them one at a time
+works too, but the list has to be kept in step with the folder by hand:
+
 ```bash
 supabase functions deploy send-notification
 supabase functions deploy payment-webhook
+supabase functions deploy request-payment
 supabase functions deploy invite-user
 supabase functions deploy public-document
 supabase functions deploy public-survey
