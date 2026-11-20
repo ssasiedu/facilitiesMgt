@@ -12,6 +12,21 @@ export function adminClient(): SupabaseClient {
   return client;
 }
 
+/**
+ * A client that acts as the signed-in staff member, not as the service role. Business rules in
+ * the database - require_role, current_profile_id - read the caller's JWT, so anything that must
+ * be judged against who is asking goes through this rather than the admin client.
+ */
+export function callerClient(req: Request): SupabaseClient {
+  const url = Deno.env.get("SUPABASE_URL");
+  const anon = Deno.env.get("SUPABASE_ANON_KEY");
+  if (!url || !anon) throw new Error("SUPABASE_URL and SUPABASE_ANON_KEY are not set");
+  return createClient(url, anon, {
+    auth: { persistSession: false, autoRefreshToken: false },
+    global: { headers: { Authorization: req.headers.get("Authorization") ?? "" } },
+  });
+}
+
 export interface CompanySettings {
   company_name: string;
   logo_url: string | null;
@@ -31,6 +46,8 @@ export interface CompanySettings {
   email_provider: "resend" | "smtp";
   payment_provider: "paystack" | "hubtel";
   online_payments_enabled: boolean;
+  /** How a staff payment request is sent. A prompt needs Hubtel's Receive Money capability. */
+  payment_request_mode: "link" | "prompt";
   public_app_url: string;
 }
 

@@ -105,23 +105,36 @@ Deno.serve(async (req) => {
   }
 
   // ---- record it -----------------------------------------------------------------------------
-  const { data: invoice, error: invErr } = await admin.from("invoices").select("id, customer_id, balance").eq("id", session.invoice_id).single();
-  if (invErr || !invoice) return errorResponse("Invoice not found", 404);
+  /* A session opened from an invoice link, or by staff against an invoice, has one to pay down.
+     A deposit asked for before the work is invoiced has none: that money is recorded against the
+     customer and left unallocated, which is the credit the first invoice draws on. */
+  let invoice: { id: string; customer_id: string; balance: number } | null = null;
+  if (session.invoice_id) {
+    const { data, error: invErr } = await admin.from("invoices").select("id, customer_id, balance").eq("id", session.invoice_id).single();
+    if (invErr || !data) return errorResponse("Invoice not found", 404);
+    invoice = data as { id: string; customer_id: string; balance: number };
+  }
+
+  const customerId = invoice?.customer_id ?? session.customer_id;
+  if (!customerId) {
+    await admin.from("payment_sessions").update({ failure_reason: "the session names neither an invoice nor a customer" }).eq("reference", claimed.reference);
+    return errorResponse("This payment session names neither an invoice nor a customer", 500);
+  }
 
   // The balance can have moved since checkout opened — someone may have paid cash meanwhile. Pay
   // down what is still owed and leave any excess as customer credit, which record_payment handles.
   /* Credit what the invoice was for. Any surcharge went to the provider, not to us, so recording
      the gross would overstate our cash and leave the customer's statement wrong by the fee. */
   const received = provider === "hubtel" ? Math.min(claimed.amount, Number(session.amount)) : claimed.amount;
-  const allocate = Math.min(Number(invoice.balance), received);
+  const allocate = invoice ? Math.min(Number(invoice.balance), received) : 0;
   const { data: result, error } = await admin.rpc("record_payment", {
-    p_customer_id: invoice.customer_id,
+    p_customer_id: customerId,
     p_amount: received,
     p_method: claimed.methodCode,
     p_date: new Date().toISOString().slice(0, 10),
     p_reference: claimed.reference,
     p_bank_account_id: null,
-    p_allocations: allocate > 0 ? [{ invoice_id: invoice.id, amount: allocate }] : [],
+    p_allocations: invoice && allocate > 0 ? [{ invoice_id: invoice.id, amount: allocate }] : [],
     p_notes: claimed.amount > received + 0.005
       ? `Online payment via ${provider}. Customer was charged GH¢ ${claimed.amount.toFixed(2)}, including GH¢ ${(claimed.amount - received).toFixed(2)} provider fee.`
       : `Online payment via ${provider}`,

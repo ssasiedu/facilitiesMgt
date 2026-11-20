@@ -48,7 +48,7 @@ export default function ConfigurationPage() {
     defaultValues: {
       segregation_of_duties: true, estimate_margin_threshold: 20, contract_margin_threshold: 20,
       overdue_reminder_days: '1, 7, 14, 30', survey_expiry_days: 30, survey_low_score: 3, survey_low_nps: 6,
-      fiscal_year_start_month: 1, lock_date: '', online_payments_enabled: false,
+      fiscal_year_start_month: 1, lock_date: '', online_payments_enabled: false, payment_request_mode: 'link',
       sms_provider: '', email_provider: '', payment_provider: '',
     },
   });
@@ -66,6 +66,7 @@ export default function ConfigurationPage() {
       fiscal_year_start_month: settings.fiscal_year_start_month,
       lock_date: settings.lock_date ?? '',
       online_payments_enabled: settings.online_payments_enabled,
+      payment_request_mode: settings.payment_request_mode ?? 'link',
       sms_provider: settings.sms_provider,
       email_provider: settings.email_provider,
       payment_provider: settings.payment_provider,
@@ -190,6 +191,14 @@ export default function ConfigurationPage() {
           <div className="mt-3">
             <Checkbox label="Let customers pay invoices online" {...form.register('online_payments_enabled')}
               hint="Adds a Pay now button to the invoice link. The provider keys stay in Edge Function secrets." />
+          </div>
+          <div className="mt-3">
+            <Select label="How staff request a payment" {...form.register('payment_request_mode')}
+              options={[
+                { value: 'link', label: 'Send a payment link by SMS' },
+                { value: 'prompt', label: 'Send a mobile money prompt to the handset' },
+              ]}
+              hint="A prompt needs Receive Money enabled on the Hubtel merchant account; until it is, a link is sent instead." />
           </div>
           <p className="mt-2 text-xs text-stone-500">
             Changing a provider here only tells the Edge Functions which one to call. The keys themselves are set with

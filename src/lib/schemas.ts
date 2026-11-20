@@ -238,6 +238,8 @@ export const configurationSchema = z.object({
   fiscal_year_start_month: z.coerce.number().int().min(1).max(12),
   lock_date: optDate,
   online_payments_enabled: z.boolean(),
+  /* A prompt needs Hubtel's Receive Money capability; the request falls back to a link without it. */
+  payment_request_mode: z.enum(['link', 'prompt']),
   sms_provider: reqText('SMS provider'), email_provider: reqText('Email provider'), payment_provider: reqText('Payment provider'),
 });
 export type ConfigurationValues = z.infer<typeof configurationSchema>;

@@ -428,6 +428,7 @@ export type Database = {
           cron_times: Json;
           updated_at: string;
           default_payment_terms: string;
+          payment_request_mode: string;
         };
         Insert: {
           id?: number;
@@ -466,6 +467,7 @@ export type Database = {
           cron_times?: Json;
           updated_at?: string;
           default_payment_terms?: string;
+          payment_request_mode?: string;
         };
         Update: {
           id?: number;
@@ -504,6 +506,7 @@ export type Database = {
           cron_times?: Json;
           updated_at?: string;
           default_payment_terms?: string;
+          payment_request_mode?: string;
         };
         Relationships: [];
       };
@@ -3004,7 +3007,7 @@ export type Database = {
         Row: {
           reference: string;
           provider: string;
-          invoice_id: string;
+          invoice_id: string | null;
           amount: number;
           status: string;
           payment_id: string | null;
@@ -3015,11 +3018,15 @@ export type Database = {
           provider_ref: string | null;
           failure_reason: string | null;
           gross_amount: number | null;
+          customer_id: string | null;
+          requested_phone: string | null;
+          requested_by: string | null;
+          channel: string;
         };
         Insert: {
           reference: string;
           provider: string;
-          invoice_id: string;
+          invoice_id?: string | null;
           amount: number;
           status?: string;
           payment_id?: string | null;
@@ -3030,11 +3037,15 @@ export type Database = {
           provider_ref?: string | null;
           failure_reason?: string | null;
           gross_amount?: number | null;
+          customer_id?: string | null;
+          requested_phone?: string | null;
+          requested_by?: string | null;
+          channel?: string;
         };
         Update: {
           reference?: string;
           provider?: string;
-          invoice_id?: string;
+          invoice_id?: string | null;
           amount?: number;
           status?: string;
           payment_id?: string | null;
@@ -3045,6 +3056,10 @@ export type Database = {
           provider_ref?: string | null;
           failure_reason?: string | null;
           gross_amount?: number | null;
+          customer_id?: string | null;
+          requested_phone?: string | null;
+          requested_by?: string | null;
+          channel?: string;
         };
         Relationships: [];
       };
@@ -4673,6 +4688,7 @@ export type Database = {
       date_text: { Args: { p: string; }; Returns: Json };
       estimate_line_cost: { Args: { p_category: string; p_basis: string; p_quantity: number; p_headcount: number; p_days: number; p_km: number; p_unit_cost: number; p_cost_per_trip: number; p_cost_per_km: number; p_cost_per_day: number; p_rate_basis: string; p_hours_per_day: number; p_total_visits: number; }; Returns: Json };
       estimate_total_visits: { Args: { p_is_recurring: boolean; p_visits: number; p_period: string; p_months: number; }; Returns: Json };
+      fail_payment_request: { Args: { p_reference: string; p_reason: string; }; Returns: Json };
       generate_recurring_invoices: { Args: { p_as_of?: string; p_contract_id?: string; p_bill_next?: boolean; }; Returns: Json };
       get_activity_timeline: { Args: { p_entity_type: string; p_entity_id: string; p_limit?: number; }; Returns: Json };
       get_customer_overview: { Args: { p_customer_id: string; }; Returns: Json };
@@ -4698,8 +4714,11 @@ export type Database = {
       my_zone_ids: { Args: {  }; Returns: Json };
       new_estimate_version: { Args: { p_estimate_id: string; }; Returns: Json };
       normalize_phone: { Args: { p: string; }; Returns: Json };
+      notify_payment_request: { Args: { p_reference: string; p_url?: string; p_channel?: string; }; Returns: Json };
+      open_payment_request: { Args: { p_customer_id: string; p_amount: number; p_phone: string; p_invoice_id?: string; }; Returns: Json };
       pay_bill: { Args: { p_bill_id: string; p_amount: number; p_bank_account_id: string; p_date: string; p_reference: string; }; Returns: Json };
       pay_expense: { Args: { p_expense_id: string; p_bank_account_id: string; p_reference: string; }; Returns: Json };
+      pending_payment_requests: { Args: { p_customer_id: string; }; Returns: Json };
       post_journal: { Args: { p_entry_id: string; }; Returns: Json };
       reassign_job_truck: { Args: { p_job_id: string; p_old_truck: string; p_new_truck: string; }; Returns: Json };
       recalc_quotation: { Args: { p_quotation_id: string; }; Returns: Json };

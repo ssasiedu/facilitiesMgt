@@ -709,4 +709,100 @@ begin
   raise notice 'PASS the by-invoice statement steps each invoice down its own balance and ties to the invoice';
 end $$;
 
+-- ---------- 16. Asking a customer to pay ----------
+do $$
+declare
+  v_cust uuid; v_inv uuid; v_no text; v_bal numeric; v_open jsonb; v_ref text; v_other uuid; n int;
+begin
+  update public.company_settings set online_payments_enabled = true, payment_provider = 'hubtel',
+    payment_request_mode = 'link' where id = 1;
+
+  -- one invoice, chosen deterministically, and the customer taken from it
+  select i.id, i.invoice_no, i.balance, i.customer_id into v_inv, v_no, v_bal, v_cust
+  from public.invoices i
+  where i.balance > 0 and i.invoice_no is not null and i.status not in ('draft','void')
+  order by i.invoice_no limit 1;
+  assert v_inv is not null, 'no issued invoice with a balance to request against';
+
+  perform pg_temp.login('t.acc1@test.local');
+
+  -- a request against an invoice
+  v_open := public.open_payment_request(v_cust, 100, '0244123456', v_inv);
+  v_ref := v_open->>'reference';
+  assert length(v_ref) <= 32, format('reference %s is longer than Hubtel accepts', v_ref);
+  assert v_open->>'phone' = public.normalize_phone('0244123456'),
+    format('phone was not normalised the same way the rest of the system does it: %s', v_open->>'phone');
+  assert (v_open->>'amount')::numeric = 100, 'amount came back wrong';
+  assert v_open->>'invoice_no' = v_no, 'the invoice number did not come back';
+  assert (select status from public.payment_sessions where reference = v_ref) = 'pending', 'session not pending';
+  assert (select customer_id from public.payment_sessions where reference = v_ref) = v_cust, 'session has no customer';
+
+  -- more than the invoice owes is refused, so a session can never be opened for money not due
+  begin
+    perform public.open_payment_request(v_cust, v_bal + 1, '0244123456', v_inv);
+    assert false, 'a request for more than the invoice owes was accepted';
+  exception when others then
+    assert sqlerrm like '%only owes%', format('wrong refusal: %s', sqlerrm);
+  end;
+
+  -- below the floor is refused: a gateway fee would cost more than the payment collects
+  begin
+    perform public.open_payment_request(v_cust, 0.50, '0244123456', v_inv);
+    assert false, 'a request below the floor was accepted';
+  exception when others then
+    assert sqlerrm like '%smallest request%', format('wrong refusal: %s', sqlerrm);
+  end;
+
+  -- an invoice belonging to someone else cannot be charged to this customer
+  select customer_id into v_other from public.invoices where customer_id <> v_cust limit 1;
+  if v_other is not null then
+    begin
+      perform public.open_payment_request(v_other, 10, '0244123456', v_inv);
+      assert false, 'an invoice was charged to the wrong customer';
+    exception when others then
+      assert sqlerrm like '%another customer%', format('wrong refusal: %s', sqlerrm);
+    end;
+  end if;
+
+  -- on account, for a deposit asked for before the work is invoiced
+  v_open := public.open_payment_request(v_cust, 2500, '0204123456', null);
+  assert v_open->>'invoice_id' is null, 'an on-account request picked up an invoice';
+  assert (select invoice_id from public.payment_sessions where reference = v_open->>'reference') is null,
+    'the on-account session was tied to an invoice';
+
+  -- the customer is told what they are paying for, with the amount in the message
+  perform public.notify_payment_request(v_ref, 'https://pay.example/abc', 'link');
+  select count(*) into n from public.notifications
+  where event_code = 'payment_request' and body like '%' || v_no || '%' and body like '%pay.example/abc%';
+  assert n = 1, 'the payment request SMS did not name the invoice and the link';
+
+  -- a prompt says a prompt is coming rather than sending a link that does not exist
+  perform public.notify_payment_request(v_open->>'reference', null, 'prompt');
+  assert exists (select 1 from public.notifications
+    where event_code = 'payment_request' and body like '%sent to your phone%'), 'the prompt SMS wording is wrong';
+
+  -- both requests are visible as still waiting
+  select count(*) into n from public.pending_payment_requests(v_cust);
+  assert n >= 2, format('pending requests should list both, listed %s', n);
+
+  -- one that could not be sent is closed off rather than left pending
+  perform public.fail_payment_request(v_ref, 'Hubtel 403: not allow-listed');
+  assert (select status from public.payment_sessions where reference = v_ref) = 'failed', 'a failed request stayed pending';
+
+  perform pg_temp.logout();
+
+  -- a driver has no business asking a customer for money
+  perform pg_temp.login('t.driver1@test.local');
+  begin
+    perform public.open_payment_request(v_cust, 10, '0244123456', null);
+    assert false, 'a driver was allowed to request a payment';
+  exception when others then
+    assert sqlerrm like '%permission%' or sqlerrm like '%not allowed%' or sqlerrm like '%role%',
+      format('wrong refusal for a driver: %s', sqlerrm);
+  end;
+  perform pg_temp.logout();
+
+  raise notice 'PASS a payment request checks the amount, the invoice and the role, and works on account too';
+end $$;
+
 rollback;

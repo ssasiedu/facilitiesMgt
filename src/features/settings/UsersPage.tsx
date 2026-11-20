@@ -5,6 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Check, Copy, KeyRound, ShieldCheck, UserPlus } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/lib/supabaseClient';
+import { callFunction } from '@/lib/functions';
 import { check, friendlyError } from '@/lib/rpc';
 import { useAuth } from '@/lib/auth';
 import { ALL_ROLES, MATRIX, MATRIX_ORDER, MODULE_LABELS, ROLE_LABELS, type Module, type Role } from '@/lib/permissions';
@@ -31,31 +32,9 @@ type Person = Tables<'profiles'> & {
 };
 type InviteForm = z.infer<typeof inviteSchema>;
 
-/**
- * supabase-js reports every non-2xx as the same opaque "Edge Function returned a non-2xx status
- * code" and hands the actual Response back on error.context. The function always answers with
- * { error: "..." }, so read it: the reason is the whole value of the message.
- */
+/** The shared helper surfaces the function's own error sentence rather than the opaque one. */
 async function callInviteFunction(body: Record<string, unknown>) {
-  const { data, error } = await supabase.functions.invoke('invite-user', { body });
-  if (error) {
-    let message = error.message;
-    const ctx: unknown = (error as { context?: unknown }).context;
-    let raw = '';
-    if (typeof Response !== 'undefined' && ctx instanceof Response) {
-      raw = await ctx.clone().text().catch(() => '');
-      if (!raw) message = `${message} (HTTP ${ctx.status})`;
-    } else if (typeof ctx === 'string') {
-      raw = ctx;
-    } else if (ctx && typeof ctx === 'object' && typeof (ctx as { body?: unknown }).body === 'string') {
-      raw = (ctx as { body: string }).body;
-    }
-    if (raw) {
-      try { message = (JSON.parse(raw) as { error?: string }).error ?? raw; } catch { message = raw; }
-    }
-    throw new Error(message);
-  }
-  return data as { ok: boolean; password?: string };
+  return callFunction<{ ok: boolean; password?: string }>('invite-user', { body });
 }
 
 /** Users, their roles and zones (spec 4.14), plus the role matrix from section 3 for reference. */

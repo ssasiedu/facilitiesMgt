@@ -214,3 +214,102 @@ export const hubtelCheckout = {
     }
   },
 };
+
+/* ------------------------------------------------------------------ Hubtel Receive Money ----
+ * Pushes a mobile money prompt straight to the payer's handset, instead of sending them a link.
+ *
+ * Unlike hosted checkout this needs the Receive Money capability enabled on the merchant account,
+ * and Hubtel allow-lists the calling IP. An Edge Function has no fixed outbound IP, so the call
+ * can be refused for a reason that has nothing to do with the request. That is why this returns a
+ * reason rather than throwing on a refusal the caller can work around: the caller falls back to
+ * sending a link, and the customer is still asked to pay.
+ */
+
+/** Hubtel wants the network as a channel name; it is taken from the number's prefix. */
+export function hubtelMomoChannel(phone: string): string | null {
+  const digits = phone.replace(/\D/g, "");
+  // 233XXXXXXXXX or 0XXXXXXXXX
+  const local = digits.startsWith("233") ? `0${digits.slice(3)}` : digits;
+  if (!/^0\d{9}$/.test(local)) return null;
+  const prefix = local.slice(0, 3);
+  if (["024", "054", "055", "059", "025", "053"].includes(prefix)) return "mtn-gh";
+  if (["020", "050"].includes(prefix)) return "vodafone-gh";
+  if (["027", "057", "026", "056"].includes(prefix)) return "tigo-gh";
+  return null;
+}
+
+export interface PromptRequest {
+  amount: number;
+  phone: string;
+  reference: string;
+  description: string;
+  webhookUrl: string;
+  customerName: string | null;
+  customerEmail: string | null;
+}
+
+export type PromptResult =
+  | { ok: true; providerRef: string | null }
+  /** retry: the link is worth trying instead. fatal: the request itself was wrong. */
+  | { ok: false; retryAsLink: boolean; reason: string };
+
+export const hubtelPrompt = {
+  /** True only when the secrets a prompt needs are present; it says nothing about Hubtel's approval. */
+  configured(): boolean {
+    return !!Deno.env.get("HUBTEL_MERCHANT_ACCOUNT") && !!Deno.env.get("HUBTEL_API_ID") && !!Deno.env.get("HUBTEL_API_KEY");
+  },
+
+  async send(req: PromptRequest): Promise<PromptResult> {
+    const merchant = Deno.env.get("HUBTEL_MERCHANT_ACCOUNT");
+    if (!merchant) return { ok: false, retryAsLink: true, reason: "HUBTEL_MERCHANT_ACCOUNT is not set" };
+
+    const channel = hubtelMomoChannel(req.phone);
+    if (!channel) {
+      // A number we cannot map is the one refusal worth stopping on: a link would go to the same
+      // unusable number.
+      return { ok: false, retryAsLink: false, reason: `${req.phone} is not a Ghana mobile money number we recognise` };
+    }
+
+    const base = (Deno.env.get("HUBTEL_RECEIVE_URL")
+      ?? `https://rmp.hubtel.com/merchantaccount/merchants/${merchant}/receive/mobilemoney`).replace(/\/$/, "");
+
+    let res: Response;
+    try {
+      res = await fetch(base, {
+        method: "POST",
+        headers: { Authorization: hubtelAuth(), "Content-Type": "application/json" },
+        body: JSON.stringify({
+          CustomerName: req.customerName ?? "Customer",
+          CustomerMsisdn: req.phone.replace(/\D/g, ""),
+          CustomerEmail: req.customerEmail ?? undefined,
+          Channel: channel,
+          Amount: Number(req.amount.toFixed(2)),
+          PrimaryCallbackUrl: req.webhookUrl,
+          Description: req.description.slice(0, 100),
+          ClientReference: req.reference.slice(0, 32),
+        }),
+      });
+    } catch (e) {
+      return { ok: false, retryAsLink: true, reason: `Could not reach Hubtel: ${(e as Error).message}` };
+    }
+
+    const { parsed, text } = await readJson(res);
+    const body = (parsed ?? {}) as {
+      ResponseCode?: string; Message?: string; Data?: { TransactionId?: string; ClientReference?: string };
+      responseCode?: string; message?: string;
+    };
+    const code = body.ResponseCode ?? body.responseCode ?? "";
+    const message = body.Message ?? body.message ?? (text ? text.slice(0, 300) : "no reason given");
+
+    /* 0001 is "request accepted, prompt sent, awaiting the customer"; 0000 is an immediate
+       success. Anything else has not charged anyone, so the session must not be left pending. */
+    if (res.ok && (code === "0001" || code === "0000")) {
+      return { ok: true, providerRef: body.Data?.TransactionId ?? null };
+    }
+
+    /* 401 and 403 are what an unapproved capability or a non-allow-listed IP look like from here,
+       and neither is anything the staff member can fix in the moment. Those fall back to a link. */
+    const retryAsLink = res.status === 401 || res.status === 403 || res.status >= 500 || code === "" ;
+    return { ok: false, retryAsLink, reason: `Hubtel ${res.status}${code ? ` (${code})` : ""}: ${message}` };
+  },
+};

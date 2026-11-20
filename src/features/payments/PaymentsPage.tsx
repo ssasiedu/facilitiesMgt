@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { HandCoins, Undo2 } from 'lucide-react';
+import { HandCoins, Smartphone, Undo2 } from 'lucide-react';
 import { supabase } from '@/lib/supabaseClient';
 import { check, rpc, useAction } from '@/lib/rpc';
 import { useAuth } from '@/lib/auth';
@@ -23,6 +23,7 @@ import { DateRange } from '@/components/ui/DateRange';
 import { Tabs } from '@/components/ui/Tabs';
 import { Spinner } from '@/components/ui/Spinner';
 import { PaymentModal } from './PaymentModal';
+import { RequestPaymentModal } from './RequestPaymentModal';
 import type { Tables } from '@/types/database';
 
 type Row = Tables<'payments'> & {
@@ -47,6 +48,8 @@ export default function PaymentsPage() {
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
   const [newOpen, setNewOpen] = useState(false);
+  const [requestOpen, setRequestOpen] = useState(false);
+  const [requestCustomer, setRequestCustomer] = useState(false);
   const [customerId, setCustomerId] = useState('');
   const [customerLabel, setCustomerLabel] = useState<string | null>(null);
   const [payOpen, setPayOpen] = useState(false);
@@ -111,7 +114,10 @@ export default function PaymentsPage() {
   return (
     <div>
       <PageHeader title="Payments" subtitle="Money received, how it was applied, and credits held on account"
-        actions={isAccountant ? <Button icon={<HandCoins className="h-4 w-4" />} onClick={() => setNewOpen(true)}>Record payment</Button> : null} />
+        actions={isAccountant ? <>
+          <Button variant="secondary" icon={<Smartphone className="h-4 w-4" />} onClick={() => setRequestOpen(true)}>Request payment</Button>
+          <Button icon={<HandCoins className="h-4 w-4" />} onClick={() => setNewOpen(true)}>Record payment</Button>
+        </> : null} />
 
       <Tabs tabs={[{ value: 'payments', label: 'Payments', count: table.count }, { value: 'credits', label: 'Customer credits' }]} value={tab} onChange={setTab} />
 
@@ -181,6 +187,21 @@ export default function PaymentsPage() {
           )
         )}
       </div>
+
+      <Modal open={requestOpen && !requestCustomer} onClose={() => setRequestOpen(false)} title="Who should we ask to pay?" size="sm"
+        footer={<><Button variant="secondary" onClick={() => setRequestOpen(false)}>Cancel</Button>
+          <Button disabled={!customerId} onClick={() => setRequestCustomer(true)}>Continue</Button></>}>
+        <AsyncPicker label="Customer" required queryKey="customers" value={customerId || null} valueLabel={customerLabel}
+          onChange={(cid, item) => { setCustomerId(cid ?? ''); setCustomerLabel(item?.label ?? null); }}
+          search={searchCustomers} placeholder="Search by name, code or phone…" />
+      </Modal>
+
+      {customerId ? (
+        <RequestPaymentModal open={requestOpen && requestCustomer} customerId={customerId}
+          customerName={customerLabel ?? 'Customer'}
+          onClose={() => { setRequestOpen(false); setRequestCustomer(false); }}
+          onDone={() => void table.refetch()} />
+      ) : null}
 
       <Modal open={newOpen} onClose={() => setNewOpen(false)} title="Which customer paid?" size="sm"
         footer={<><Button variant="secondary" onClick={() => setNewOpen(false)}>Cancel</Button>
