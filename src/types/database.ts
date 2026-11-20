@@ -4728,6 +4728,8 @@ export type Database = {
       rpt_tax_summary: { Args: { p_from: string; p_to: string; }; Returns: Json };
       rpt_trial_balance: { Args: { p_as_of?: string; }; Returns: Json };
       schedule_app_jobs: { Args: {  }; Returns: Json };
+      send_customer_balance: { Args: { p_customer_id: string; p_channel: string; p_note?: string; }; Returns: Json };
+      send_customer_message: { Args: { p_customer_id: string; p_channel: string; p_body: string; p_subject?: string; }; Returns: Json };
       send_test_email: { Args: { p_email: string; p_subject?: string; p_message?: string; }; Returns: Json };
       send_test_sms: { Args: { p_phone: string; p_message: string; }; Returns: Json };
       set_contract_status: { Args: { p_contract_id: string; p_status: string; p_reason: string; }; Returns: Json };

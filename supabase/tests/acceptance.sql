@@ -556,4 +556,54 @@ begin
   raise notice 'PASS quotation carries sellable lines, per-rate tax breakdown and payment terms; accepted ones are frozen';
 end $$;
 
+-- ---------- 13. A message and a balance sent from the customer page ----------
+do $$
+declare v_cust uuid; v_id uuid; v_body text; v_bal numeric; v_phone text;
+begin
+  perform pg_temp.login('t.manager1@test.local');
+
+  -- a customer who owes something, so the balance wording has figures in it
+  select customer_id into v_cust from public.invoices where balance > 0 limit 1;
+  select coalesce(sum(balance), 0) into v_bal from public.invoices
+  where customer_id = v_cust and status in ('issued','due','partially_paid','overdue');
+  assert v_bal > 0, 'no customer with a balance to test against';
+
+  v_id := public.send_customer_message(v_cust, 'sms', '  Your truck arrives tomorrow at 7am.  ');
+  select body, recipient_phone into v_body, v_phone from public.notifications where id = v_id;
+  assert v_body = 'Your truck arrives tomorrow at 7am.', format('message body was %L', v_body);
+  assert v_phone is not null, 'the phone number was not normalised onto the notification';
+  assert (select channel from public.notifications where id = v_id) = 'sms', 'wrong channel';
+  assert (select customer_id from public.notifications where id = v_id) = v_cust, 'not logged against the customer';
+
+  -- an empty message is refused rather than queued as a blank SMS
+  begin
+    perform public.send_customer_message(v_cust, 'sms', '   ');
+    assert false, 'an empty message was accepted';
+  exception when others then
+    assert sqlerrm like '%Write the message%', format('wrong refusal: %s', sqlerrm);
+  end;
+
+  -- the balance message carries the figure the ledger holds, not one passed in
+  v_id := public.send_customer_balance(v_cust, 'sms', 'Kindly settle this week.');
+  select body into v_body from public.notifications where id = v_id;
+  assert v_body like '%' || public.money_text(v_bal) || '%', format('balance %s missing from %L', v_bal, v_body);
+  assert v_body like '%Kindly settle this week.', 'the added note was dropped';
+  assert (select event_code from public.notifications where id = v_id) = 'balance_notice', 'wrong event code';
+
+  -- a settled customer is told so rather than being sent a demand for nothing
+  select c.id into v_cust from public.customers c
+  where coalesce(c.phone, c.company_phone) is not null
+    and not exists (select 1 from public.invoices i
+      where i.customer_id = c.id and i.status in ('issued','due','partially_paid','overdue') and i.balance > 0)
+  limit 1;
+  if v_cust is not null then
+    v_id := public.send_customer_balance(v_cust, 'sms');
+    select body into v_body from public.notifications where id = v_id;
+    assert v_body like '%fully settled%', format('settled customer got %L', v_body);
+  end if;
+
+  perform pg_temp.logout();
+  raise notice 'PASS a drafted message and a balance notice queue against the customer with the ledger''s own figure';
+end $$;
+
 rollback;

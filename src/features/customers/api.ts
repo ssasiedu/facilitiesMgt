@@ -56,3 +56,11 @@ export async function searchCustomers(q: string): Promise<PickerItem[]> {
 export const CUSTOMER_IMPORT_COLUMNS = ['customer_type', 'title', 'first_name', 'middle_name', 'last_name', 'gender', 'ghana_card_no', 'phone', 'alt_phone', 'whatsapp', 'email',
   'occupation', 'residential_address', 'company_name', 'trading_name', 'registration_no', 'tin', 'sector', 'company_phone', 'company_email', 'digital_address', 'region',
   'district', 'source', 'preferred_channel', 'sms_opt_in', 'credit_limit', 'payment_terms_days', 'notes'] as const;
+
+/** A message a staff member writes, queued through the same sender as every automatic one. */
+export const sendCustomerMessage = (customerId: string, channel: 'sms' | 'email', body: string, subject?: string) =>
+  rpc<string>('send_customer_message', { p_customer_id: customerId, p_channel: channel, p_body: body, p_subject: subject ?? null });
+
+/** The outstanding balance, worded and worked out by the database so the figure is the ledger's. */
+export const sendCustomerBalance = (customerId: string, channel: 'sms' | 'email', note?: string) =>
+  rpc<string>('send_customer_balance', { p_customer_id: customerId, p_channel: channel, p_note: note ?? null });

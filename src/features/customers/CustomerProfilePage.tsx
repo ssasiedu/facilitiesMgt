@@ -3,12 +3,12 @@ import { Link, useParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { ExternalLink, Pencil, Plus, Trash2 } from 'lucide-react';
+import { ExternalLink, MessageSquare, Pencil, Plus, Trash2, Wallet } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/lib/supabaseClient';
-import { check, rpc } from '@/lib/rpc';
+import { check, rpc, useAction } from '@/lib/rpc';
 import { useAuth } from '@/lib/auth';
-import { canEdit } from '@/lib/permissions';
+import { canEdit, hasAny } from '@/lib/permissions';
 import { contactSchema, type ContactForm } from '@/lib/schemas';
 import { displayPhone, formatDate, formatDateTime, formatGHS, humanize } from '@/lib/format';
 import { signedUrl } from '@/lib/storage';
@@ -24,12 +24,13 @@ import { Input } from '@/components/ui/Input';
 import { Checkbox } from '@/components/ui/Checkbox';
 import { FileUpload } from '@/components/ui/FileUpload';
 import { Select } from '@/components/ui/Select';
+import { Textarea } from '@/components/ui/Textarea';
 import { Timeline } from '@/components/ui/Timeline';
 import { CommentsPanel } from '@/components/ui/CommentsPanel';
 import { PageSkeleton } from '@/components/ui/Skeleton';
 import { ErrorState } from '@/components/ui/ErrorState';
 import { StatementTab } from './StatementTab';
-import { saveContact, type Contact, type Customer } from './api';
+import { saveContact, sendCustomerBalance, sendCustomerMessage, type Contact, type Customer } from './api';
 
 type Tab = 'overview' | 'jobs' | 'contracts' | 'estimates' | 'invoices' | 'payments' | 'statement' | 'documents' | 'surveys' | 'messages' | 'activity';
 
@@ -71,6 +72,23 @@ export default function CustomerProfilePage() {
   const messages = useCustList('cust-messages', 'notifications', 'id, created_at, channel, event_code, body, status, recipient_phone, recipient_email, error', 'created_at', tab === 'messages');
   const timeline = useQuery({ queryKey: ['timeline', 'customer', id], enabled: tab === 'activity', queryFn: () => rpc<{ at: string; kind: string; title: string; detail: string | null; actor: string | null }[]>('get_activity_timeline', { p_entity_type: 'customer', p_entity_id: id }) });
 
+  const [messageOpen, setMessageOpen] = useState(false);
+  const [balanceOpen, setBalanceOpen] = useState(false);
+  const [msg, setMsg] = useState({ channel: 'sms' as 'sms' | 'email', subject: '', body: '' });
+  const [balanceNote, setBalanceNote] = useState({ channel: 'sms' as 'sms' | 'email', note: '' });
+
+  const sendMessage = useAction(() => sendCustomerMessage(id, msg.channel, msg.body, msg.subject), {
+    success: 'Message queued — it goes out within the minute',
+    invalidate: [['cust-messages', id]],
+    onSuccess: () => { setMessageOpen(false); setMsg({ channel: 'sms', subject: '', body: '' }); },
+  });
+
+  const sendBalance = useAction(() => sendCustomerBalance(id, balanceNote.channel, balanceNote.note), {
+    success: 'Balance queued — it goes out within the minute',
+    invalidate: [['cust-messages', id]],
+    onSuccess: () => { setBalanceOpen(false); setBalanceNote({ channel: 'sms', note: '' }); },
+  });
+
   const contactForm = useForm<ContactForm>({ resolver: zodResolver(contactSchema), defaultValues: { name: '', position: '', phone: '', email: '', ghana_card_no: '', is_primary: false, receives_invoices: false } });
 
   if (cust.isLoading) return <PageSkeleton />;
@@ -78,6 +96,9 @@ export default function CustomerProfilePage() {
   const c = cust.data;
   const o = overview.data;
   const editable = canEdit(roles, 'customers');
+  const canMessage = editable || hasAny(roles, 'accountant', 'manager', 'sales_exec', 'ops_officer');
+  const hasPhone = !!(c.phone || c.company_phone);
+  const hasEmail = !!(c.email || c.company_email);
 
   return (
     <div>
@@ -86,6 +107,8 @@ export default function CustomerProfilePage() {
         actions={<>
           {is('ops_officer', 'sales_exec', 'manager') && c.status !== 'blacklisted' ? <Link to={`/jobs/new?customer=${c.id}`}><Button variant="secondary">New job order</Button></Link> : null}
           {is('ops_officer', 'sales_exec', 'manager') ? <Link to={`/estimates/new?customer=${c.id}`}><Button variant="secondary">New estimate</Button></Link> : null}
+          {canMessage ? <Button variant="secondary" icon={<MessageSquare className="h-4 w-4" />} onClick={() => setMessageOpen(true)}>Send a message</Button> : null}
+          {canMessage ? <Button variant="secondary" icon={<Wallet className="h-4 w-4" />} onClick={() => setBalanceOpen(true)}>Send balance</Button> : null}
           {editable ? <Link to={`/customers/${c.id}/edit`}><Button icon={<Pencil className="h-4 w-4" />}>Edit</Button></Link> : null}
         </>} />
       <Tabs<Tab> value={tab} onChange={setTab} tabs={[
@@ -180,6 +203,47 @@ export default function CustomerProfilePage() {
           <Input label="Email" error={contactForm.formState.errors.email?.message} {...contactForm.register('email')} />
           <Input label="Ghana Card (optional)" error={contactForm.formState.errors.ghana_card_no?.message} {...contactForm.register('ghana_card_no')} />
           <div><Checkbox label="Primary contact" {...contactForm.register('is_primary')} /><Checkbox label="Receives invoices" hint="Gets invoice emails and SMS" {...contactForm.register('receives_invoices')} /></div>
+        </div>
+      </Modal>
+
+      {/* Both of these queue through the ordinary notifications table, so they are sent by the
+          same function, logged against this customer and visible on the Messages tab. */}
+      <Modal open={messageOpen} onClose={() => setMessageOpen(false)} title={`Send a message to ${c.display_name}`} size="sm"
+        footer={<><Button variant="secondary" onClick={() => setMessageOpen(false)}>Cancel</Button>
+          <Button loading={sendMessage.isPending} disabled={!msg.body.trim()} onClick={() => sendMessage.mutate()}>Send</Button></>}>
+        <div className="space-y-4">
+          <Select label="Send by" value={msg.channel} onChange={(e) => setMsg({ ...msg, channel: e.target.value as 'sms' | 'email' })}
+            options={[
+              { value: 'sms', label: hasPhone ? `SMS to ${displayPhone(c.phone ?? c.company_phone)}` : 'SMS — no phone number on file', disabled: !hasPhone },
+              { value: 'email', label: hasEmail ? `Email to ${c.email ?? c.company_email}` : 'Email — no address on file', disabled: !hasEmail },
+            ]} />
+          {msg.channel === 'email' ? (
+            <Input label="Subject" value={msg.subject} onChange={(e) => setMsg({ ...msg, subject: e.target.value })}
+              hint="Leave it blank for a standard subject" />
+          ) : null}
+          <Textarea label="Message" rows={5} required value={msg.body} onChange={(e) => setMsg({ ...msg, body: e.target.value })}
+            hint={msg.channel === 'sms' ? `${msg.body.length} characters · about ${Math.max(1, Math.ceil(msg.body.length / 160))} SMS` : undefined} />
+        </div>
+      </Modal>
+
+      <Modal open={balanceOpen} onClose={() => setBalanceOpen(false)} title="Send the current balance" size="sm"
+        footer={<><Button variant="secondary" onClick={() => setBalanceOpen(false)}>Cancel</Button>
+          <Button loading={sendBalance.isPending} onClick={() => sendBalance.mutate()}>Send</Button></>}>
+        <div className="space-y-4">
+          <p className="text-sm text-stone-700">
+            The balance on their account right now is{' '}
+            <strong>{overview.isPending ? 'still loading' : formatGHS(o?.outstanding ?? 0)}</strong>. The message is
+            written and the figure read when you send, so it is the ledger's number rather than whatever this page last
+            loaded.
+          </p>
+          <Select label="Send by" value={balanceNote.channel} onChange={(e) => setBalanceNote({ ...balanceNote, channel: e.target.value as 'sms' | 'email' })}
+            options={[
+              { value: 'sms', label: hasPhone ? `SMS to ${displayPhone(c.phone ?? c.company_phone)}` : 'SMS — no phone number on file', disabled: !hasPhone },
+              { value: 'email', label: hasEmail ? `Email to ${c.email ?? c.company_email}` : 'Email — no address on file', disabled: !hasEmail },
+            ]} />
+          <Textarea label="Anything to add (optional)" rows={3} value={balanceNote.note}
+            onChange={(e) => setBalanceNote({ ...balanceNote, note: e.target.value })}
+            hint="Appended to the end of the message" />
         </div>
       </Modal>
     </div>
